@@ -1,0 +1,26 @@
+# Secretos: nunca entran al build de la imagen (se inyectan en runtime).
+.env
+.env.*
+
+# VCS y caches
+.git
+.gitignore
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.mypy_cache/
+.pytest_cache/
+.ruff_cache/
+.langgraph_api/
+
+# No necesarios en la imagen final
+tests/
+README*
+Makefile
+LICENSE
+static/
+.github/
+uv.lock
+.codespellignore
+docker-compose*.yml

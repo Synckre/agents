@@ -1,0 +1,53 @@
+# Producción / Coolify.
+# - Secrets como referencias de entorno (${VAR}) sin valores hardcodeados:
+#   se configuran en la UI de Coolify (fail-fast si falta alguna obligatoria).
+# - Sin puertos publicados al host: la app se expone vía la red interna de
+#   Coolify/Traefik usando la variable mágica SERVICE_URL_<NOMBRE>_8000.
+# - Postgres NO está expuesto públicamente (sin ports ni domain).
+
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:?POSTGRES_USER es obligatoria}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD es obligatoria}
+      POSTGRES_DB: ${POSTGRES_DB:?POSTGRES_DB es obligatoria}
+    volumes:
+      - synckre_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  app:
+    build: .
+    restart: unless-stopped
+    environment:
+      APP_ENV: production
+      # Secretos (referencias, sin valores en el yaml)
+      DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY:?DEEPSEEK_API_KEY es obligatoria}
+      API_KEYS: ${API_KEYS:?API_KEYS es obligatoria}
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL es obligatoria}
+      LANGSMITH_API_KEY: ${LANGSMITH_API_KEY:-}
+      # Dominio público vía variable mágica de Coolify (hosts de confianza),
+      # con fallback a TRUSTED_HOSTS para despliegues sin esa variable.
+      TRUSTED_HOSTS: ${SERVICE_URL_SYNCKRE_8000:-${TRUSTED_HOSTS:-}}
+      # Seguridad / comportamiento
+      CORS_ORIGINS: ${CORS_ORIGINS:-}
+      FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:-127.0.0.1}
+      RATE_LIMIT: ${RATE_LIMIT:-20/minute}
+      BODY_LIMIT_BYTES: ${BODY_LIMIT_BYTES:-1000000}
+      LLM_TIMEOUT_SECONDS: ${LLM_TIMEOUT_SECONDS:-60}
+      MAX_MENSAJE_LENGTH: ${MAX_MENSAJE_LENGTH:-4000}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    expose:
+      - "8000"
+
+volumes:
+  synckre_pgdata:

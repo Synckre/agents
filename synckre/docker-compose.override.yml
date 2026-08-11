@@ -1,0 +1,18 @@
+# Override SOLO para desarrollo local (se fusiona automáticamente con
+# docker-compose.yml al ejecutar `docker compose up`).
+# - Publica la app y Postgres solo en 127.0.0.1 (nunca en 0.0.0.0).
+# - En producción (Coolify) NO se aplica este override.
+
+services:
+  postgres:
+    ports:
+      - "127.0.0.1:5432:5432"
+
+  app:
+    build: .
+    environment:
+      APP_ENV: development
+      # Dentro de la red de compose el host de Postgres es el nombre del servicio.
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+    ports:
+      - "127.0.0.1:8000:8000"
