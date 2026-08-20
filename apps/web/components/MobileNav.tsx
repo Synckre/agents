@@ -39,7 +39,7 @@ export function MobileNav() {
   return (
     <>
       {/* Mobile Top Navigation Bar (Hamburguesa + Brand + User) */}
-      <div className="lg:hidden flex items-center justify-between px-4 sm:px-6 h-16 border-b border-border bg-background/95 backdrop-blur z-30">
+      <div className="lg:hidden flex items-center justify-between px-6 sm:px-8 h-18 sm:h-20 py-3.5 border-b border-border bg-background/95 backdrop-blur z-30">
         <div className="flex items-center gap-3">
           <button
             onClick={() => setOpen(true)}
