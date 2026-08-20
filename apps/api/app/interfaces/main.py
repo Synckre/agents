@@ -23,6 +23,7 @@ from app.interfaces.api.v1.health import router as health_router
 from app.interfaces.api.v1.knowledge import router as knowledge_router
 from app.interfaces.api.v1.tasks import router as tasks_router
 from app.interfaces.api.v1.analytics import router as analytics_router
+from app.interfaces.api.v1.api_keys import router as api_keys_router
 
 # Importar tools para registro
 import app.application.tools  # noqa: F401
@@ -109,6 +110,7 @@ app.include_router(knowledge_router)
 app.include_router(audit_router)
 app.include_router(analytics_router)
 app.include_router(calendar_router)
+app.include_router(api_keys_router)
 
 
 @app.get("/")

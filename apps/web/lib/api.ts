@@ -108,4 +108,14 @@ export const api = {
 
   // Analytics
   getAnalyticsStats: () => fetchApi('/api/v1/analytics/stats'),
+
+  // API Keys
+  listApiKeys: () => fetchApi('/api/v1/api-keys'),
+  createApiKey: (name: string, role = 'public') =>
+    fetchApi('/api/v1/api-keys', {
+      method: 'POST',
+      body: JSON.stringify({ name, role }),
+    }),
+  revokeApiKey: (id: string) =>
+    fetchApi(`/api/v1/api-keys/${id}`, { method: 'DELETE' }),
 };

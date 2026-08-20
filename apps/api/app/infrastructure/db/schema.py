@@ -285,4 +285,18 @@ UPDATE synckre.memory SET entity_type = 'lead' WHERE entity_type = 'prospect';
 -- Eliminar las tablas legacy una vez migradas (no se vuelven a crear).
 DROP TABLE IF EXISTS synckre.customer_memory;
 DROP TABLE IF EXISTS synckre.prospects;
+
+-- 11. GESTIÓN DE API KEYS (Plataforma y Agentes)
+CREATE TABLE IF NOT EXISTS synckre.api_keys (
+    id VARCHAR(255) PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    key_hash VARCHAR(64) UNIQUE NOT NULL,
+    prefix VARCHAR(20) NOT NULL,
+    role VARCHAR(50) NOT NULL DEFAULT 'public',
+    is_active BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    expires_at TIMESTAMP WITH TIME ZONE DEFAULT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_api_keys_hash ON synckre.api_keys(key_hash);
 """

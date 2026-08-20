@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { API_BASE, getApiKey } from '@/lib/api';
 
 export type ApiStatus = 'checking' | 'online' | 'offline';
 
@@ -16,9 +17,9 @@ export function useApiStatus(intervalMs = 30000): ApiStatus {
       try {
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), 4000);
-        const res = await fetch('http://localhost:8000/api/v1/health', {
+        const res = await fetch(`${API_BASE}/api/v1/health`, {
           signal: controller.signal,
-          headers: { 'x-api-key': 'synckre-int-key-2026' },
+          headers: { 'x-api-key': getApiKey() || 'synckre-pub-key-2026' },
         });
         clearTimeout(timer);
         const data = await res.json().catch(() => null);

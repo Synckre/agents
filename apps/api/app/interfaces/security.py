@@ -3,11 +3,13 @@ Autenticación y Autorización por x-api-key para Synckre Agent V2.
 Soporta dominios 'public', 'internal' y 'admin' con RBAC y aislamiento estricto.
 """
 
+import hashlib
 import hmac
 import logging
 from typing import Literal, Optional
 from fastapi import Header, HTTPException, status
 from app.infrastructure.config import settings
+from app.infrastructure.db.manager import db_manager
 
 logger = logging.getLogger("security")
 
@@ -32,17 +34,47 @@ def resolve_domain(api_key: Optional[str]) -> Optional[DomainRole]:
     return None
 
 
-def require_domain(expected: DomainRole, x_api_key: Optional[str]) -> DomainRole:
+async def resolve_domain_async(api_key: Optional[str]) -> Optional[DomainRole]:
+    if not api_key:
+        return None
+    
+    # 1. Comprobar claves estáticas primero
+    static_role = resolve_domain(api_key)
+    if static_role:
+        return static_role
+
+    # 2. Consultar en la base de datos (synckre.api_keys) por hash SHA-256
+    try:
+        key_hash = hashlib.sha256(api_key.encode()).hexdigest()
+        row = await db_manager.fetch_one(
+            """
+            SELECT role, is_active, expires_at FROM synckre.api_keys
+            WHERE key_hash = $1 AND is_active = TRUE
+              AND (expires_at IS NULL OR expires_at > NOW())
+            """,
+            key_hash
+        )
+        if row and row.get("role"):
+            role = row["role"]
+            if role in ("admin", "internal", "public"):
+                return role
+    except Exception as exc:
+        logger.warning(f"Error al verificar API key en BD: {exc}")
+
+    return None
+
+
+async def require_domain_async(expected: DomainRole, x_api_key: Optional[str]) -> DomainRole:
     if not x_api_key:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Header 'x-api-key' ausente.",
         )
-    actual = resolve_domain(x_api_key)
+    actual = await resolve_domain_async(x_api_key)
     if actual is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="API key inválida.",
+            detail="API key inválida o revocada.",
         )
 
     # Admin puede acceder a cualquier endpoint
@@ -59,15 +91,15 @@ def require_domain(expected: DomainRole, x_api_key: Optional[str]) -> DomainRole
 
 
 async def require_public_key(x_api_key: Optional[str] = Header(default=None, alias="x-api-key")) -> DomainRole:
-    return require_domain("public", x_api_key)
+    return await require_domain_async("public", x_api_key)
 
 
 async def require_internal_key(x_api_key: Optional[str] = Header(default=None, alias="x-api-key")) -> DomainRole:
-    return require_domain("internal", x_api_key)
+    return await require_domain_async("internal", x_api_key)
 
 
 async def require_admin_key(x_api_key: Optional[str] = Header(default=None, alias="x-api-key")) -> DomainRole:
-    return require_domain("admin", x_api_key)
+    return await require_domain_async("admin", x_api_key)
 
 
 async def require_any_key(x_api_key: Optional[str] = Header(default=None, alias="x-api-key")) -> DomainRole:
@@ -77,11 +109,11 @@ async def require_any_key(x_api_key: Optional[str] = Header(default=None, alias=
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Header 'x-api-key' ausente.",
         )
-    actual = resolve_domain(x_api_key)
+    actual = await resolve_domain_async(x_api_key)
     if actual is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="API key inválida.",
+            detail="API key inválida o revocada.",
         )
     return actual
 
