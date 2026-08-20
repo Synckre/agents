@@ -81,23 +81,6 @@ class Settings(BaseSettings):
     APPOINTMENT_REMINDER_MINUTES: int = int(os.getenv("APPOINTMENT_REMINDER_MINUTES", "15"))
     REMINDER_POLL_SECONDS: int = int(os.getenv("REMINDER_POLL_SECONDS", "60"))
 
-    # Disponibilidad de la empresa (agenda)
-    # BUSINESS_DAYS: días de la semana 0=Lunes ... 6=Domingo (separados por coma)
-    # BUSINESS_HOURS: horas de inicio de los huecos (separadas por coma)
-    # BUSINESS_TIMEZONE: zona horaria de la empresa (IANA, ej. America/Argentina/Buenos_Aires, Europe/Madrid)
-    BUSINESS_DAYS_STR: str = os.getenv("BUSINESS_DAYS", "1,2,3,4,5")
-    BUSINESS_HOURS_STR: str = os.getenv("BUSINESS_HOURS", "10,15")
-    BUSINESS_TIMEZONE: str = os.getenv("BUSINESS_TIMEZONE", "UTC")
-    APPOINTMENT_DURATION_MINUTES: int = int(os.getenv("APPOINTMENT_DURATION_MINUTES", "30"))
-
-    @property
-    def business_days(self) -> List[int]:
-        return [int(x) for x in self.BUSINESS_DAYS_STR.split(",") if x.strip().isdigit()]
-
-    @property
-    def business_hours(self) -> List[int]:
-        return [int(x) for x in self.BUSINESS_HOURS_STR.split(",") if x.strip().isdigit()]
-
     # External Integrations
     EMAIL_PROVIDER: str = os.getenv("EMAIL_PROVIDER", "resend")
     EMAIL_FROM: str = os.getenv("EMAIL_FROM", "soporte@synckre.com")

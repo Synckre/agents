@@ -72,13 +72,20 @@ Configura las siguientes variables en la sección **Environment Variables** del 
 
 ## Solución de Problemas Comunes en Coolify
 
+0. **Error: `Invalid template: "postgresql://${POSTGRES_USER:-postgres"` (falla al leer build-time.env)**:
+   - **Causa**: algún valor de variable en Coolify usa la sintaxis de plantilla `${VAR:-default}` del `docker-compose.yml` (típicamente `POSTGRES_URI` copiada del compose). Coolify interpreta `${...}` como plantilla y falla.
+   - **Solución**: pon **valores concretos** en Coolify, nunca `${...}`. En especial:
+     - `POSTGRES_URI=postgresql://usuario:password@host:5432/base` (URI real, sin `${}`)
+     - `INTERNAL_API_KEY`, `ADMIN_API_KEY`, `PUBLIC_API_KEY`, `DEEPSEEK_API_KEY` → valores fijos generados.
+   - Si usas la **Opción 1 (docker-compose)**, las variables con `${...:-...}` son válidas porque las interpola el propio compose; el problema solo aparece en la **Opción 2 (servicios individuales)**.
+
 1. **Error: `COPY failed: file not found` durante la compilación en Coolify**:
    - **Causa**: Coolify usó la raíz del repositorio como contexto de compilación en lugar de la subcarpeta del servicio.
    - **Solución**: En la configuración del servicio de Coolify, establece **Base Directory** en `/apps/api` para el backend y `/apps/web` para el frontend.
 
 2. **El contenedor API aparece como `unhealthy`**:
-   - **Causa**: Coolify realizó la verificación de salud antes de que PostgreSQL o las migraciones estuvieran listas.
-   - **Solución**: El endpoint `/api/v1/health` no requiere autenticación obligatoria. Asegúrate de que el Healthcheck Path en Coolify sea `/api/v1/health` en el puerto `8000`.
+   - **Causa**: el healthcheck de Coolify hace un GET plano a `/api/v1/health`, pero ese endpoint **exige la key** (`x-api-key`) y devolvería 401.
+   - **Solución**: el Dockerfile de la API ya incluye un `HEALTHCHECK` que envía `x-api-key: $INTERNAL_API_KEY` (Coolify lo respeta). Si usas el healthcheck HTTP de Coolify, configura el header `x-api-key` con tu `INTERNAL_API_KEY`, o deja que Coolify use el healthcheck del Dockerfile.
 
 3. **CORS Error desde la web de Astro o Dashboard**:
    - **Solución**: Añade la URL completa de tu frontend (ej. `https://www.synckre.com`) a la variable `ALLOWED_ORIGINS` en las variables de entorno de Coolify.

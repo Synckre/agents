@@ -756,7 +756,7 @@ class AgentRuntime:
                 break
         from zoneinfo import ZoneInfo
         try:
-            tz = ZoneInfo(settings.BUSINESS_TIMEZONE)
+            tz = ZoneInfo("UTC")
         except Exception:
             from datetime import timezone as _tz
             tz = _tz.utc

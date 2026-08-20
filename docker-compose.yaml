@@ -40,7 +40,7 @@ services:
       - POSTGRES_USER=${POSTGRES_USER:-postgres}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
       - POSTGRES_DB=${POSTGRES_DB:-langgraph_db}
-      - POSTGRES_URI=${POSTGRES_URI:-postgresql://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@postgres:5432/${POSTGRES_DB:-langgraph_db}}
+      - POSTGRES_URI=${POSTGRES_URI:-postgresql://postgres:postgres@postgres:5432/langgraph_db}
       - PUBLIC_API_KEY=${PUBLIC_API_KEY:-synckre-pub-key-2026}
       - INTERNAL_API_KEY=${INTERNAL_API_KEY:-synckre-int-key-2026}
       - ADMIN_API_KEY=${ADMIN_API_KEY:-synckre-admin-key-2026}
@@ -56,12 +56,6 @@ services:
       - ERPNEXT_API_KEY=${ERPNEXT_API_KEY:-}
       - ERPNEXT_API_SECRET=${ERPNEXT_API_SECRET:-}
       - ERPNEXT_GOOGLE_CALENDAR=${ERPNEXT_GOOGLE_CALENDAR:-}
-      - APPOINTMENT_REMINDER_MINUTES=${APPOINTMENT_REMINDER_MINUTES:-15}
-      - REMINDER_POLL_SECONDS=${REMINDER_POLL_SECONDS:-60}
-      - BUSINESS_DAYS=${BUSINESS_DAYS:-1,2,3,4,5}
-      - BUSINESS_HOURS=${BUSINESS_HOURS:-10,15}
-      - BUSINESS_TIMEZONE=${BUSINESS_TIMEZONE:-UTC}
-      - APPOINTMENT_DURATION_MINUTES=${APPOINTMENT_DURATION_MINUTES:-30}
     depends_on:
       postgres:
         condition: service_healthy

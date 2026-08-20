@@ -7,7 +7,7 @@ confirmación al cliente y programa recordatorios automáticos
 
 La disponibilidad se resuelve así:
 1) Note "Synckre Availability" en ERPNext (JSON: days, hours, timezone, duration) — editable desde el UI de ERPNext.
-2) Fallback a .env (BUSINESS_DAYS, BUSINESS_HOURS, BUSINESS_TIMEZONE, APPOINTMENT_DURATION_MINUTES).
+2) Fallback fijo (Lun-Vie 10:00/15:00 UTC, 30 min) si ERPNext no está configurado o no responde.
 """
 
 from datetime import datetime, timedelta, timezone
@@ -82,21 +82,23 @@ def _slot_humano(dt: datetime) -> str:
 async def _config_disponibilidad() -> Dict[str, Any]:
     """Resuelve la disponibilidad de la agenda (con caché corta para no golpear ERPNext).
 
-    Fuente preferida: ERPNext -> 'Appointment Booking Settings'
-      (enable_scheduling + availability_of_slots: day_of_week / from_time / to_time;
-       appointment_duration en minutos). Genera huecos cada `duration` dentro de cada ventana.
-    Fallback: .env (BUSINESS_DAYS / BUSINESS_HOURS / BUSINESS_TIMEZONE / APPOINTMENT_DURATION_MINUTES).
+    ERPNext es la ÚNICA fuente de verdad: 'Appointment Booking Settings'
+    (enable_scheduling + availability_of_slots: day_of_week / from_time / to_time;
+    appointment_duration en minutos). Genera huecos cada `duration` dentro de cada ventana.
 
-    Devuelve: {days: [int], hours_by_day: {int: [minutos]}, timezone, duration, source}
+    Si ERPNext no está configurado o no devuelve una disponibilidad válida, devuelve {}:
+    NO se inventan horarios (check_availability/create_event lo comunican con claridad).
+    Devuelve: {days, hours_by_day, timezone, duration, source} o {}.
     """
     global _CONFIG_CACHE, _CONFIG_CACHE_TS
     if _CONFIG_CACHE and (time.monotonic() - _CONFIG_CACHE_TS) < _CONFIG_CACHE_TTL:
         return _CONFIG_CACHE
 
+    resultado: Dict[str, Any] = {}
     cfg = await erpnext_client.get_appointment_booking_settings()
     if cfg and cfg.get("enable_scheduling"):
         slots = cfg.get("availability_of_slots") or []
-        duration = int(cfg.get("appointment_duration") or settings.APPOINTMENT_DURATION_MINUTES) or 30
+        duration = int(cfg.get("appointment_duration") or 30) or 30
         hours_by_day: Dict[int, list[int]] = {}
         for row in slots:
             dia = _DIA_INDICE.get((row.get("day_of_week") or "").strip().lower())
@@ -112,22 +114,10 @@ async def _config_disponibilidad() -> Dict[str, Any]:
             resultado = {
                 "days": sorted(hours_by_day.keys()),
                 "hours_by_day": {d: sorted(set(h)) for d, h in hours_by_day.items()},
-                "timezone": settings.BUSINESS_TIMEZONE,  # ERPNext guarda horas en tz del servidor
+                "timezone": "UTC",  # ERPNext guarda horas en tz del servidor
                 "duration": duration,
                 "source": "erpnext",
             }
-            _CONFIG_CACHE, _CONFIG_CACHE_TS = resultado, time.monotonic()
-            return resultado
-    # Fallback .env
-    resultado = {
-        "days": settings.business_days,
-        "hours_by_day": {
-            d: [h * 60 for h in settings.business_hours] for d in settings.business_days
-        },
-        "timezone": settings.BUSINESS_TIMEZONE,
-        "duration": settings.APPOINTMENT_DURATION_MINUTES,
-        "source": "env",
-    }
     _CONFIG_CACHE, _CONFIG_CACHE_TS = resultado, time.monotonic()
     return resultado
 
@@ -142,8 +132,13 @@ def _parse_inicio(inicio_iso: str) -> Optional[datetime]:
         return None
 
 
-def _next_available(cfg: Dict[str, Any]) -> datetime:
-    """Próximo hueco útil según la configuración de la empresa (evita horas pasadas)."""
+def _next_available(cfg: Dict[str, Any]) -> Optional[datetime]:
+    """Próximo hueco útil según la disponibilidad de ERPNext (evita horas pasadas).
+
+    Devuelve None si no hay disponibilidad configurada (el llamador debe comunicarlo).
+    """
+    if not cfg:
+        return None
     now = datetime.now(timezone.utc)
     tz = _zona(cfg["timezone"])
     local_now = now.astimezone(tz)
@@ -156,7 +151,7 @@ def _next_available(cfg: Dict[str, Any]) -> datetime:
             slot_utc = slot_local.astimezone(timezone.utc)
             if slot_utc > now:
                 return slot_utc
-    return (local_now + timedelta(days=7)).replace(hour=10, minute=0, second=0, microsecond=0).astimezone(timezone.utc)
+    return None
 
 
 async def _programar_recordatorios(
@@ -227,6 +222,17 @@ async def _confirmar_cita(cliente_nombre: str, cliente_email: str, inicio: datet
 )
 async def check_availability(dias_ahead: int = 7, max_slots: int = 10) -> Dict[str, Any]:
     cfg = await _config_disponibilidad()
+    if not cfg:
+        return {
+            "status": "success",
+            "available_slots": [],
+            "slots_human": [],
+            "source": "none",
+            "message": (
+                "No hay disponibilidad configurada en ERPNext (Appointment Booking Settings). "
+                "No puedo ofrecer horarios: contacta a un operador para agendar."
+            ),
+        }
     now = datetime.now(timezone.utc)
     tz = _zona(cfg["timezone"])
     local_now = now.astimezone(tz)
@@ -282,13 +288,22 @@ async def create_event(
 
     cfg = await _config_disponibilidad()
     inicio = _parse_inicio(inicio_iso) or _next_available(cfg)
+    if inicio is None:
+        return {
+            "status": "permanent_failure",
+            "message": (
+                "No hay disponibilidad configurada en ERPNext (Appointment Booking Settings) y no "
+                "elegiste un horario. No puedo agendar sin horarios reales: contacta a un operador."
+            ),
+        }
     # Validación: no agendar en un horario que ya pasó
     if inicio <= datetime.now(timezone.utc):
         return {
             "status": "permanent_failure",
             "message": "El horario elegido ya pasó. Ofrece al cliente uno de los horarios disponibles (futuros).",
         }
-    fin = inicio + timedelta(minutes=int(cfg["duration"]))
+    duracion = int(cfg.get("duration") or 30) or 30
+    fin = inicio + timedelta(minutes=duracion)
 
     # 2) Crear el evento en ERPNext (control de agenda de la compañía)
     evento = await erpnext_client.create_event(
@@ -387,7 +402,8 @@ async def reschedule_event(event_id: str = "", nuevo_inicio_iso: str = "", email
         return {"status": "permanent_failure", "message": "El nuevo horario ya pasó. Ofrece uno futuro."}
 
     cfg = await _config_disponibilidad()
-    fin = inicio + timedelta(minutes=int(cfg["duration"]))
+    duracion = int(cfg.get("duration") or 30) or 30
+    fin = inicio + timedelta(minutes=duracion)
 
     res = await erpnext_client.reschedule_event(event_id, inicio.isoformat(), fin.isoformat())
     if not res.get("ok"):
