@@ -7,8 +7,8 @@ name: agent_synckre
 services:
   frontend:
     build:
-      context: ./apps/web
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: apps/web/Dockerfile
       # Las NEXT_PUBLIC_* se hornean en el build (producción)
       args:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
@@ -25,8 +25,8 @@ services:
 
   api:
     build:
-      context: ./apps/api
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: apps/api/Dockerfile
     container_name: synckre_api
     restart: unless-stopped
     ports:
@@ -39,8 +39,9 @@ services:
       - DEEPSEEK_BASE_URL=${DEEPSEEK_BASE_URL:-https://api.deepseek.com}
       - POSTGRES_USER=${POSTGRES_USER:-postgres}
       - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-postgres}
+      - POSTGRES_HOST=${POSTGRES_HOST:-postgres}
+      - POSTGRES_PORT=${POSTGRES_PORT:-5432}
       - POSTGRES_DB=${POSTGRES_DB:-langgraph_db}
-      - POSTGRES_URI=${POSTGRES_URI:-postgresql://postgres:postgres@postgres:5432/langgraph_db}
       - PUBLIC_API_KEY=${PUBLIC_API_KEY:-synckre-pub-key-2026}
       - INTERNAL_API_KEY=${INTERNAL_API_KEY:-synckre-int-key-2026}
       - ADMIN_API_KEY=${ADMIN_API_KEY:-synckre-admin-key-2026}

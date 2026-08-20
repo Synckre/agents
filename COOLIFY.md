@@ -83,6 +83,14 @@ Configura las siguientes variables en la sección **Environment Variables** del 
    - **Causa**: Coolify usó la raíz del repositorio como contexto de compilación en lugar de la subcarpeta del servicio.
    - **Solución**: En la configuración del servicio de Coolify, establece **Base Directory** en `/apps/api` para el backend y `/apps/web` para el frontend.
 
+1b. **Error: `failed to read dockerfile: open Dockerfile: no such file or directory` (target api/frontend)**:
+   - **Causa**: el **Dockerfile Location** no coincide con el Base Directory. Ej.: Base Directory = raíz del repo y Dockerfile Location = `/Dockerfile`, cuando el Dockerfile está en `apps/web/Dockerfile`.
+   - **Solución**: pon **Base Directory = `/apps/web`** (o `/apps/api`) y **Dockerfile Location = `/Dockerfile`** (relativo al Base Directory). Si prefieres Base Directory = raíz, usa `apps/web/Dockerfile` como Dockerfile Location.
+
+1c. **Avisos `The "POSTGRES_HOST" variable is not set` / `POSTGRES_PORT`**:
+   - **Causa**: la URI de la BD se arma con variables de plantilla de Coolify sin valor.
+   - **Solución**: define `POSTGRES_HOST=postgres` y `POSTGRES_PORT=5432` (o usa `POSTGRES_URI` con una URI completa y concreta).
+
 2. **El contenedor API aparece como `unhealthy`**:
    - **Causa**: el healthcheck de Coolify hace un GET plano a `/api/v1/health`, pero ese endpoint **exige la key** (`x-api-key`) y devolvería 401.
    - **Solución**: el Dockerfile de la API ya incluye un `HEALTHCHECK` que envía `x-api-key: $INTERNAL_API_KEY` (Coolify lo respeta). Si usas el healthcheck HTTP de Coolify, configura el header `x-api-key` con tu `INTERNAL_API_KEY`, o deja que Coolify use el healthcheck del Dockerfile.
