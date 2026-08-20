@@ -7,7 +7,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-dev \
     && rm -rf /var/lib/apt/lists/*
 
-COPY apps/api/requirements.txt .
+COPY requirements.txt .
 RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
 
 FROM python:3.12-slim
@@ -18,9 +18,9 @@ ENV PYTHONDONTWRITEBYTECODE=1
 
 COPY --from=builder /install /usr/local
 
-COPY apps/api/app /app/app
-COPY apps/api/scripts /app/scripts
-COPY apps/api/tests /app/tests
+COPY app /app/app
+COPY scripts /app/scripts
+COPY tests /app/tests
 
 RUN groupadd -r appgroup && useradd -r -g appgroup appuser \
     && chown -R appuser:appgroup /app
