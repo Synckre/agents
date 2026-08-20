@@ -49,6 +49,7 @@ import {
 import { PageTransition } from '@/components/PageTransition';
 import { Markdown } from '@/components/Markdown';
 import { ThinkingTimeline } from '@/components/ThinkingTimeline';
+import { cn } from '@/lib/utils';
 
 const ROLES = [
   'contact_form_agent',
@@ -324,24 +325,25 @@ export default function ConversationDetailPage() {
 
   return (
     <PageTransition>
-    <div className="flex flex-col gap-6 h-[calc(100vh-6rem)]">
+    <div className="flex flex-col gap-6 min-h-screen lg:h-[calc(100vh-6rem)] lg:min-h-0">
       {/* Header */}
-      <div className="flex items-center justify-between border-b border-zinc-800 pb-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-zinc-800 pb-4">
         <div className="flex items-center gap-3">
           <Link
             href="/conversations"
             transitionTypes={['nav-back']}
-            className="p-2 rounded-lg bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 text-zinc-300 transition"
+            className="p-2 rounded-lg bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 text-zinc-300 transition shrink-0"
+            title="Volver a conversaciones"
           >
             <ArrowLeft className="size-4" />
           </Link>
-          <div>
-            <h2 className="text-xl font-bold text-zinc-100 flex items-center gap-2">
+          <div className="min-w-0">
+            <h2 className="text-lg sm:text-xl font-bold text-zinc-100 flex items-center gap-2 flex-wrap">
               Conversación{' '}
               <ViewTransition name={`conv-${conversationId}`} share="text-morph" default="none">
                 <span className="font-mono text-zinc-400 font-bold">{conversationId}</span>
               </ViewTransition>
-              <Badge variant="secondary" className="text-[10px] uppercase">
+              <Badge variant="secondary" className="text-[10px] uppercase shrink-0">
                 {role.replace(/_/g, ' ')}
               </Badge>
             </h2>
@@ -349,7 +351,7 @@ export default function ConversationDetailPage() {
           </div>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 shrink-0 self-start sm:self-auto">
           {/* Role Selection (shadcn Select) */}
           <div className="hidden md:flex items-center gap-2">
             <span className="text-xs text-zinc-400 font-semibold">Rol del Agente:</span>
@@ -373,26 +375,30 @@ export default function ConversationDetailPage() {
             </Select>
           </div>
 
-          {/* Toggle modo operador humano */}
+          {/* Toggle modo operador humano (IconButton en móvil) */}
           <Button
             variant={humanMode ? 'default' : 'outline'}
             size="sm"
             onClick={() => setHumanMode((m) => !m)}
             title={humanMode ? 'Volver al modo agente' : 'Atender la conversación como operador humano'}
-            className={humanMode ? 'bg-primary text-primary-foreground' : ''}
+            aria-label={humanMode ? 'Volver al modo agente' : 'Atender como humano'}
+            className={cn("gap-1.5 px-2.5 sm:px-3", humanMode && 'bg-primary text-primary-foreground')}
           >
-            <Headset className="w-3.5 h-3.5" />
-            {humanMode ? 'Modo Operador' : 'Atender como humano'}
+            <Headset className="size-4 shrink-0" />
+            <span className="hidden sm:inline">{humanMode ? 'Modo Operador' : 'Atender como humano'}</span>
           </Button>
 
-          {/* Delete conversation */}
-          <button
+          {/* Delete conversation (IconButton) */}
+          <Button
+            variant="outline"
+            size="icon"
             onClick={() => setDeleteOpen(true)}
             title="Eliminar conversación"
-            className="p-2 rounded-lg bg-secondary border border-border text-muted-foreground hover:text-destructive hover:border-destructive/40 transition"
+            aria-label="Eliminar conversación"
+            className="size-9 rounded-lg border-border text-muted-foreground hover:text-destructive"
           >
-            <Trash2 className="w-4 h-4" />
-          </button>
+            <Trash2 className="size-4" />
+          </Button>
         </div>
       </div>
 
@@ -431,8 +437,8 @@ export default function ConversationDetailPage() {
         </div>
       )}
 
-      {/* Main Split Grid: Left Chat, Right Inspector */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1 overflow-hidden">
+      {/* Main Split Grid: Left Chat, Right Inspector (Stacked on Mobile, 2:1 on Desktop) */}
+      <div className="flex flex-col lg:grid lg:grid-cols-3 gap-6 flex-1 overflow-y-auto lg:overflow-hidden">
         {/* Left: Chat Area (2 cols) */}
         <div className="lg:col-span-2 flex flex-col justify-between overflow-hidden pr-2">
           <div className="flex-1 overflow-y-auto space-y-4 pr-1">

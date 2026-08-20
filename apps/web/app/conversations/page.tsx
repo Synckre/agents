@@ -98,9 +98,9 @@ export default function ConversationsPage() {
           }
           description="Supervisión e interacción en directo con el Agent Runtime."
           right={
-            <Button onClick={handleCreate}>
-              <Plus data-icon="inline-start" />
-              Nueva conversación
+            <Button onClick={handleCreate} size="sm" className="gap-1.5 px-2.5 sm:px-3">
+              <Plus className="size-4" />
+              <span className="hidden sm:inline">Nueva conversación</span>
             </Button>
           }
         />
