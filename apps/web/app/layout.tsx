@@ -25,8 +25,14 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode
 }>) {
+  const clerkPubKey =
+    process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY &&
+    process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY.startsWith("pk_")
+      ? process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+      : "pk_test_Y2xldmVyLWZpbmNoLTU1LmNsZXJrLmFjY291bnRzLmRldiQ";
+
   return (
-    <ClerkProvider>
+    <ClerkProvider publishableKey={clerkPubKey}>
       <html
         lang="es"
         suppressHydrationWarning
