@@ -17,8 +17,8 @@ router = APIRouter(prefix="/api/v1/api-keys", tags=["API Keys"])
 
 
 class CreateApiKeyRequest(BaseModel):
-    name: str = Field(..., min_length=2, max_length=100, description="Nombre o descripción de la API key")
-    role: str = Field(default="public", description="Rol de la API key: public, internal, admin")
+    name: str = Field(..., min_length=2, max_length=100, description="Nombre de la integración o aplicación externa")
+    role: str = Field(default="public", description="Rol de la API key (por defecto 'public' para integraciones externas)")
 
 
 class ApiKeyResponse(BaseModel):

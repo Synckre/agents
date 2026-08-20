@@ -23,7 +23,6 @@ export default function SettingsPage() {
   const [apiKeys, setApiKeys] = useState<ApiKeyItem[]>([]);
   const [loadingKeys, setLoadingKeys] = useState(true);
   const [newKeyName, setNewKeyName] = useState('');
-  const [newKeyRole, setNewKeyRole] = useState('public');
   const [creating, setCreating] = useState(false);
   const [createdRawKey, setCreatedRawKey] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -53,7 +52,7 @@ export default function SettingsPage() {
     try {
       setCreating(true);
       setErrorMsg(null);
-      const res = await api.createApiKey(newKeyName.trim(), newKeyRole);
+      const res = await api.createApiKey(newKeyName.trim(), 'public');
       if (res?.raw_key) {
         setCreatedRawKey(res.raw_key);
       }
@@ -197,28 +196,19 @@ export default function SettingsPage() {
               </div>
             )}
 
-            {/* Formulario para Generar Nueva API Key */}
+            {/* Formulario para Generar Nueva API Key Dinámica */}
             <form onSubmit={handleCreateKey} className="flex flex-col sm:flex-row gap-3">
               <input
                 type="text"
                 value={newKeyName}
                 onChange={(e) => setNewKeyName(e.target.value)}
-                placeholder="Nombre de la clave (ej. Integración CRM, Mobile App)"
+                placeholder="Nombre de la integración (ej. Widget Web, CRM Externa, Bot WhatsApp)"
                 className="flex-1 bg-zinc-950 border border-zinc-800 text-zinc-100 placeholder-zinc-500 rounded-lg px-4 py-2 text-xs focus:outline-none focus:border-zinc-700"
                 required
               />
-              <select
-                value={newKeyRole}
-                onChange={(e) => setNewKeyRole(e.target.value)}
-                className="bg-zinc-950 border border-zinc-800 text-zinc-100 rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-zinc-700"
-              >
-                <option value="public">Acceso Público (Formularios / Widget Web)</option>
-                <option value="internal">Acceso Integración (ERP / Webhooks / API)</option>
-                <option value="admin">Acceso Completo (Administrador)</option>
-              </select>
-              <Button type="submit" disabled={creating || !newKeyName.trim()} className="gap-1.5 text-xs font-semibold">
+              <Button type="submit" disabled={creating || !newKeyName.trim()} className="gap-1.5 text-xs font-semibold shrink-0">
                 <Plus className="size-4" />
-                {creating ? 'Generando...' : 'Generar API Key'}
+                {creating ? 'Generando...' : 'Generar API Key Dinámica'}
               </Button>
             </form>
 
@@ -227,9 +217,9 @@ export default function SettingsPage() {
               <table className="w-full text-left text-xs font-mono">
                 <thead className="bg-zinc-900/60 border-b border-border text-muted-foreground">
                   <tr>
-                    <th className="p-3">Nombre</th>
+                    <th className="p-3">Nombre de Integración</th>
                     <th className="p-3">Prefijo Key</th>
-                    <th className="p-3">Nivel de Acceso</th>
+                    <th className="p-3">Tipo de Auth</th>
                     <th className="p-3">Estado</th>
                     <th className="p-3 text-right">Acciones</th>
                   </tr>
@@ -241,7 +231,7 @@ export default function SettingsPage() {
                     </tr>
                   ) : apiKeys.length === 0 ? (
                     <tr>
-                      <td colSpan={5} className="p-4 text-center text-muted-foreground">No hay API keys generadas en la plataforma.</td>
+                      <td colSpan={5} className="p-4 text-center text-muted-foreground">No hay API keys de integración generadas.</td>
                     </tr>
                   ) : (
                     apiKeys.map((item) => (
@@ -249,8 +239,8 @@ export default function SettingsPage() {
                         <td className="p-3 text-foreground font-semibold font-sans">{item.name}</td>
                         <td className="p-3 text-muted-foreground">{item.prefix}...</td>
                         <td className="p-3">
-                          <Badge variant="outline" className="font-mono text-[10px]">
-                            {item.role === 'admin' ? 'Administrador' : item.role === 'internal' ? 'Integración API' : 'Acceso Público'}
+                          <Badge variant="outline" className="font-mono text-[10px] text-zinc-300 border-zinc-700">
+                            x-api-key dinámica
                           </Badge>
                         </td>
                         <td className="p-3">
