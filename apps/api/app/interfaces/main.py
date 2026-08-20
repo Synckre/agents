@@ -42,7 +42,7 @@ logger = logging.getLogger("main_v2")
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.info("Iniciando Synckre Agent V2 Enterprise Runtime API.")
+    logger.info("Iniciando Synckre Agent Enterprise Runtime API.")
     try:
         await db_manager.connect()
     except Exception as exc:
@@ -55,10 +55,10 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="Synckre Agent V2 — Enterprise Agent Runtime",
+    title="Synckre Agent — Enterprise Agent Runtime",
     description=(
         "Plataforma empresarial de agentes autónomos para Synckre.\n"
-        "Agent Runtime + Roles + Policies + Tools + Memory + RAG + Tasks + Temporal"
+        "Agent Runtime + Roles + Policies + Tools + Memory + RAG + Tasks"
     ),
     version="2.0.0",
     lifespan=lifespan,
@@ -116,7 +116,7 @@ app.include_router(api_keys_router)
 @app.get("/")
 async def root():
     return {
-        "platform": "Synckre Agent V2",
+        "platform": "Synckre Agent",
         "status": "online",
         "docs": "/docs",
         "health": "/api/v1/health",

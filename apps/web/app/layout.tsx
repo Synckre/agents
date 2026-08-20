@@ -16,7 +16,7 @@ const fontMono = Geist_Mono({
 })
 
 export const metadata = {
-  title: "Synckre Agent V2 — Enterprise Control Center",
+  title: "Synckre Agent — Enterprise Control Center",
   description: "Plataforma de Agente Autónomo Empresarial de Synckre",
 }
 

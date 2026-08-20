@@ -34,7 +34,7 @@ async def health_check():
     # (la app funciona en degradado sin ERPNext/Ollama/email).
     return {
         "status": "healthy" if db_ok else "degraded",
-        "service": "Synckre Agent V2 Runtime API",
+        "service": "Synckre Agent Runtime API",
         "version": "2.0.0",
         "company": settings.COMPANY_NAME,
         "database_connected": db_ok,
