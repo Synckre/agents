@@ -3,6 +3,7 @@
 import React from 'react';
 import { usePathname } from 'next/navigation';
 import { ChevronRight, Circle } from 'lucide-react';
+import { UserButton } from '@clerk/nextjs';
 import { Sidebar } from './Sidebar';
 import { MobileNav } from './MobileNav';
 import { useApiStatus } from '@/hooks/useApiStatus';
@@ -78,9 +79,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
               />
               {status === 'online' ? 'API healthy' : status === 'offline' ? 'API offline' : '…'}
             </Badge>
-            <Badge variant="outline" className="text-xs font-mono text-muted-foreground hidden sm:inline-flex">
-              v2.2.0
-            </Badge>
+            <UserButton showName={false} appearance={{ elements: { userButtonAvatarBox: 'size-7' } }} />
           </div>
         </header>
 

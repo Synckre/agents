@@ -32,7 +32,11 @@ export default function RootLayout({
       : "pk_test_Y2xldmVyLWZpbmNoLTU1LmNsZXJrLmFjY291bnRzLmRldiQ";
 
   return (
-    <ClerkProvider publishableKey={clerkPubKey}>
+    <ClerkProvider
+      publishableKey={clerkPubKey}
+      signInUrl="/login"
+      signUpUrl="/login"
+    >
       <html
         lang="es"
         suppressHydrationWarning
