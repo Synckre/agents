@@ -16,7 +16,7 @@ from typing import Any, Dict, List, Optional
 import httpx
 
 from app.application.agent.memory import MemoryRetriever
-from app.application.agent.policies import PolicyEngine
+from app.application.agent.policies import PolicyEngine, GuardrailsEngine
 from app.application.agent.roles import RoleModel, RoleSystem
 from app.application.agent.tools_registry import tool_registry
 from app.application.services.event_bus import event_bus
@@ -153,6 +153,23 @@ class AgentRuntime:
         )
         await db_manager.add_message(user_msg)
 
+        # 2a. Guardrails: detectar inyección de prompt
+        is_injection, guard_msg = GuardrailsEngine.detect_prompt_injection(user_input)
+        if is_injection:
+            logger.warning(f"Guardrails interceptó inyección de prompt en conv {conversation_id}: {guard_msg}")
+            bot_msg = MessageModel(
+                id=f"MSG-{uuid.uuid4().hex[:8]}",
+                conversation_id=conversation_id,
+                sender="assistant",
+                content="Disculpa, tu mensaje contiene instrucciones no permitidas y ha sido bloqueado por razones de seguridad.",
+            )
+            await db_manager.add_message(bot_msg)
+            return AgentRuntimeResult(
+                response_text=bot_msg.content,
+                conversation_id=conversation_id,
+                role=role_name,
+            )
+
         # 2b. Memoria: extraer y persistir datos del cliente de este mensaje (aislada por rol)
         await memory_service.ingest_message(conversation_id, role_name, user_input)
 
@@ -237,8 +254,8 @@ class AgentRuntime:
                     )
                     import time
                     start_t = time.time()
-                    # Vincular la conversación a la tool (para recordatorios/telemetría)
-                    exec_args = dict(tool_args)
+                    # Sanitizar argumentos con Guardrails y vincular conversación
+                    exec_args = GuardrailsEngine.sanitize_tool_input(selected_tool_name, dict(tool_args))
                     if selected_tool_name == "create_event":
                         exec_args.setdefault("conversation_id", conversation_id)
                     if selected_tool_name == "create_lead":
@@ -264,7 +281,13 @@ class AgentRuntime:
                                 current_email = await memory_service.get_email_for_conversation(conversation_id)
                                 if current_email:
                                     exec_args["email_actual"] = current_email
-                    tool_result = await tool_registry.execute_tool(selected_tool_name, **exec_args)
+
+                    try:
+                        tool_result = await tool_registry.execute_tool(selected_tool_name, **exec_args)
+                    except Exception as tool_exc:
+                        logger.warning(f"Self-Correction: Excepción al ejecutar tool {selected_tool_name}: {tool_exc}")
+                        tool_result = {"status": "error", "error": str(tool_exc)}
+
                     latency = int((time.time() - start_t) * 1000)
 
                     # Traspaso entre agentes públicos: transfer_to_agent actualiza el rol

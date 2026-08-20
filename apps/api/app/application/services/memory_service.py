@@ -222,5 +222,23 @@ class MemoryService:
             return ""
         return "\n".join(lineas)
 
+    async def obtener_memoria_episodica(self, email: str, role_name: str) -> Optional[str]:
+        """Obtiene la memoria episódica a largo plazo para un email del cliente."""
+        if not email:
+            return None
+        try:
+            row = await db_manager.get_memory(email, role_name)
+            if not row:
+                return None
+            partes = []
+            if row.get("summary"):
+                partes.append(f"Resumen histórico: {row['summary']}")
+            if row.get("preferences"):
+                partes.append(f"Preferencias: {row['preferences']}")
+            return " | ".join(partes) if partes else None
+        except Exception as exc:
+            logger.warning(f"Error al recuperar memoria episódica: {exc}")
+            return None
+
 
 memory_service = MemoryService()

@@ -59,3 +59,43 @@ class PolicyEngine:
             if tool_name and PolicyEngine.is_tool_allowed(role, tool_name):
                 authorized.append(tool)
         return authorized
+
+
+import re
+
+_INJECTION_PATTERNS = [
+    re.compile(r"ignore\s+(all\s+)?previous\s+instructions", re.IGNORECASE),
+    re.compile(r"disregard\s+system\s+prompt", re.IGNORECASE),
+    re.compile(r"you\s+are\s+now\s+in\s+dan\s+mode", re.IGNORECASE),
+    re.compile(r"override\s+system\s+rules", re.IGNORECASE),
+    re.compile(r"bypass\s+security\s+filter", re.IGNORECASE),
+    re.compile(r"reveal\s+internal\s+api\s+keys", re.IGNORECASE),
+]
+
+
+class GuardrailsEngine:
+    """Motor de Guardrails de entrada y salida para protección contra inyecciones y sanitización."""
+
+    @staticmethod
+    def detect_prompt_injection(user_input: str) -> Tuple[bool, str]:
+        """Detecta intentos de inyección de prompt o anulación de instrucciones del sistema."""
+        if not user_input:
+            return False, ""
+        for pattern in _INJECTION_PATTERNS:
+            if pattern.search(user_input):
+                return True, "Intento de inyección de prompt detectado por el motor de guardrails."
+        return False, ""
+
+    @staticmethod
+    def sanitize_tool_input(tool_name: str, input_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Sanitiza y recorta valores de los parámetros pasados a una herramienta."""
+        sanitized = {}
+        for key, val in input_data.items():
+            if isinstance(val, str):
+                # Eliminar caracteres nulos o comandos no seguros de shell
+                cleaned = val.replace("\x00", "").strip()
+                sanitized[key] = cleaned
+            else:
+                sanitized[key] = val
+        return sanitized
+
