@@ -3,7 +3,7 @@
 import React, { useState } from 'react';
 import { useSignIn, useSignUp } from '@clerk/nextjs';
 import { useRouter } from 'next/navigation';
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -152,15 +152,7 @@ export default function LoginPage() {
 
         {/* shadcn Card Container */}
         <Card className="border border-zinc-800 bg-zinc-900/90 shadow-2xl backdrop-blur-md">
-          <CardHeader className="text-center border-b border-zinc-800/80 pb-4 space-y-1">
-            <CardTitle className="text-xl font-bold text-zinc-100">
-              {mode === 'signin' ? 'Bienvenido de Nuevo' : 'Registrar Nueva Cuenta'}
-            </CardTitle>
-            <CardDescription className="text-sm text-zinc-400">
-              {mode === 'signin' ? 'Ingresa tus credenciales corporativas para acceder' : 'Completa tus datos para crear tu cuenta en Synckre'}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="p-6 space-y-5">
+          <CardContent className="p-6 space-y-5 pt-6">
             {error && (
               <div className="p-4 rounded-xl bg-red-950/50 border border-red-500/30 text-red-400 text-sm flex items-start gap-3">
                 <ShieldAlert className="size-5 text-red-400 shrink-0 mt-0.5" />
@@ -311,12 +303,16 @@ export default function LoginPage() {
               </form>
             )}
 
-            {/* Separador */}
-            <div className="relative flex items-center justify-center my-3">
-              <div className="border-t border-zinc-800 w-full" />
-              <span className="bg-zinc-900 px-3 text-xs uppercase font-mono text-zinc-500 shrink-0">
-                o ingresa con Google
-              </span>
+            {/* Separador Centrado */}
+            <div className="relative flex items-center justify-center my-4">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-zinc-800" />
+              </div>
+              <div className="relative flex justify-center text-xs uppercase">
+                <span className="bg-zinc-900 px-3 text-zinc-500 font-mono tracking-wider">
+                  o ingresa con Google
+                </span>
+              </div>
             </div>
 
             {/* Google OAuth Button (Abajo) */}
