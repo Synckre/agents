@@ -9,7 +9,7 @@ Monorepo con dos aplicaciones y Clean Architecture en el backend:
 | **documents/** | Documentos RAG por dominio |
 | **docker/** | Scripts auxiliares de Docker |
 
-Detalle de arquitectura y comandos en [ARCHITECTURE.md](./ARCHITECTURE.md) y [AGENTS.md](./AGENTS.md).
+Detalle de arquitectura y comandos en [ARCHITECTURE.md](./ARCHITECTURE.md), [AGENTS.md](./AGENTS.md) y guía de despliegue en Coolify en [COOLIFY.md](./COOLIFY.md).
 
 ---
 

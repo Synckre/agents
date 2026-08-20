@@ -1,3 +1,4 @@
+version: '3.8'
 name: agent_synckre
 
 # Synckre Agent V2 — Enterprise Architecture Compose (Telemetry Focus, No Temporal)

@@ -1,86 +1,84 @@
-# Despliegue con Coolify
+# Guía de Despliegue en Coolify — AgentSynckre
 
-El proyecto es compatible con **Coolify** (PaaS self-hosted). Cada aplicación se despliega
-por separado usando su propio `Dockerfile`; las variables de entorno se configuran en la
-UI de Coolify (y las `NEXT_PUBLIC_*` como variables de **build**).
+Este documento detalla la configuración y despliegue del proyecto **AgentSynckre** en **Coolify** (v4+), soportando tanto el despliegue automático mediante **Docker Compose** como el despliegue de **servicios individuales**.
 
-## Arquitectura
+---
 
-| App | Carpeta | Dockerfile | Puerto | Healthcheck |
-|-----|---------|-----------|--------|-------------|
-| **api** | `apps/api` | `Dockerfile` | 8000 | `/api/v1/health` con header `x-api-key` |
-| **web** | `apps/web` | `Dockerfile` | 3000 | TCP / puerto 3000 |
-| **postgres** | servicio de Coolify (pgvector) | — | 5432 | estándar |
-| **ollama** *(opcional)* | recurso de Coolify o externo | — | 11434 | — |
+## Opciones de Despliegue en Coolify
 
-## 1. Base de datos (Postgres con pgvector)
+Existen **dos formas** principales de desplegar AgentSynckre en Coolify:
 
-Crea un recurso **PostgreSQL** en Coolify. El esquema (`synckre.*`) se crea solo al
-arrancar la API, no hace falta importar nada. Necesitarás la URI de conexión para
-`POSTGRES_URI`.
+---
 
-> Si Coolify no ofrece pgvector, usa una imagen `pgvector/pgvector:pg16` como recurso Docker.
+### Opción 1: Despliegue Completo mediante Docker Compose (Recomendado)
 
-## 2. API (`apps/api`)
+Esta opción despliega todo el stack (`frontend`, `api`, `postgres`, `ollama`) automáticamente en un solo proyecto de Coolify.
 
-- **Build**: Dockerfile estándar (multi-stage). Imagen `python:3.12-slim` + uvicorn.
-- **Puerto**: 8000.
-- **Healthcheck**: el Dockerfile incluye un `HEALTHCHECK` que consulta
-  `/api/v1/health` con `x-api-key: $INTERNAL_API_KEY`. Coolify lo respeta; si prefieres
-  el check HTTP de Coolify, apunta a `/api/v1/health` y configura el header `x-api-key`.
+#### Pasos en Coolify:
+1. Ve a **Projects** → Selecciona o crea tu proyecto → **+ Add Resource**.
+2. Selecciona **Docker Compose**.
+3. Elige tu proveedor de Git (GitHub / GitLab / Git Repository URL) y selecciona el repositorio de `AgentSynckre`.
+4. En **Branch**, selecciona `main` (o tu rama de producción).
+5. Coolify detectará automáticamente el archivo `docker-compose.yml` en la raíz.
+6. En la pestaña **Environment Variables** de Coolify, añade tus credenciales (ver sección *Variables de Entorno*).
+7. Haz clic en **Deploy**.
 
-**Variables de entorno requeridas:**
+---
 
-| Variable | Descripción |
-|----------|-------------|
-| `POSTGRES_URI` | URI de la base (ej. `postgresql://user:pass@host:5432/db`) |
-| `PUBLIC_API_KEY` | Key de nivel público (genera con `openssl rand -hex 32`) |
-| `INTERNAL_API_KEY` | Key de nivel interno (la usa el frontend y el healthcheck) |
-| `ADMIN_API_KEY` | Key de nivel admin (ingesta RAG) |
-| `DEEPSEEK_API_KEY` | Clave de DeepSeek (LLM) |
-| `RESEND_API_KEY` | Clave de Resend (emails) |
-| `EMAIL_FROM` | Remitente de los correos |
-| `ERPNEXT_URL` / `ERPNEXT_API_KEY` / `ERPNEXT_API_SECRET` | ERPNext (opcional pero recomendado) |
+### Opción 2: Despliegue de Servicios Individuales
 
-**Opcionales:**
+Si prefieres separar los servicios en Coolify o conectar a una base de datos PostgreSQL gestionada externa:
 
-| Variable | Descripción |
-|----------|-------------|
-| `OLLAMA_BASE_URL` | Ollama para embeddings/RAG (si no se usa, la búsqueda RAG queda degradada) |
-| `BUSINESS_DAYS` / `BUSINESS_HOURS` / `BUSINESS_TIMEZONE` / `APPOINTMENT_DURATION_MINUTES` | Disponibilidad de la agenda (fallback) |
-| `GOOGLE_CALENDAR_ID` / `GOOGLE_SERVICE_ACCOUNT_JSON` | Google Calendar (fallback de citas) |
-| `ALLOWED_ORIGINS` | Orígenes CORS del frontend |
-| `ENV` | `production` |
+#### Servicio 1: API (FastAPI Backend)
+- **Resource Type**: Application (Docker File)
+- **Base Directory**: `/apps/api`
+- **Dockerfile Location**: `/Dockerfile` (o `apps/api/Dockerfile`)
+- **Port**: `8000`
+- **Healthcheck Path**: `/api/v1/health`
 
-## 3. Frontend (`apps/web`)
+#### Servicio 2: Web (Next.js Control Center)
+- **Resource Type**: Application (Docker File)
+- **Base Directory**: `/apps/web`
+- **Dockerfile Location**: `/Dockerfile` (o `apps/web/Dockerfile`)
+- **Port**: `3000`
+- **Build Arguments**:
+  - `NEXT_PUBLIC_API_URL`: URL pública de la API (ej. `https://api.tu-dominio.com`)
+  - `NEXT_PUBLIC_INTERNAL_API_KEY`: Tu clave `INTERNAL_API_KEY`
 
-- **Build**: Dockerfile multi-stage. **Las `NEXT_PUBLIC_*` se hornean en el build**:
-  configúralas como **variables de build** en Coolify.
-- **Puerto**: 3000.
+---
 
-**Variables de build:**
+## Variables de Entorno para Coolify
 
-| Variable | Valor |
-|----------|-------|
-| `NEXT_PUBLIC_API_URL` | URL pública de la API (ej. `https://api.dominio.com`) |
-| `NEXT_PUBLIC_INTERNAL_API_KEY` | Debe coincidir con `INTERNAL_API_KEY` de la API |
+Configura las siguientes variables en la sección **Environment Variables** del recurso en Coolify:
 
-**Variables de runtime:**
+| Variable | Descripción | Ejemplo / Valor |
+|---|---|---|
+| `ENV` | Entorno de ejecución | `production` |
+| `COMPANY_NAME` | Nombre legal de la empresa | `Synckre` |
+| `DEEPSEEK_API_KEY` | Clave API de DeepSeek | `sk-...` |
+| `DEEPSEEK_MODEL` | Modelo de DeepSeek | `deepseek-v4-flash` |
+| `PUBLIC_API_KEY` | Clave para sitio web/clientes públicos | Generar string seguro |
+| `INTERNAL_API_KEY` | Clave para empleados/dashboard web | Generar string seguro |
+| `ADMIN_API_KEY` | Clave administrativa backend | Generar string seguro |
+| `ALLOWED_ORIGINS` | Orígenes CORS permitidos (separados por coma) | `https://www.synckre.com,https://api.synckre.com` |
+| `POSTGRES_USER` | Usuario de PostgreSQL | `postgres` |
+| `POSTGRES_PASSWORD` | Contraseña de PostgreSQL | Generar contraseña segura |
+| `POSTGRES_DB` | Nombre de la base de datos | `langgraph_db` |
+| `POSTGRES_URI` | String de conexión (opcional si usas variables individuales) | `postgresql://postgres:pass@postgres:5432/langgraph_db` |
+| `OLLAMA_BASE_URL` | URL del servicio Ollama RAG | `http://ollama:11434` |
+| `RESEND_API_KEY` | Clave de Resend para envío de emails (opcional) | `re_...` |
 
-| Variable | Descripción |
-|----------|-------------|
-| `API_URL` | URL interna de la API **vista desde el contenedor web** (ej. `http://api:8000` si comparten red de Coolify) — la usa el route handler de login |
+---
 
-## 4. Red entre apps
+## Solución de Problemas Comunes en Coolify
 
-En Coolify, añade **api** y **web** a la **misma red** (p.ej. la red por defecto del
-proyecto). Así `API_URL=http://<nombre-del-recurso-api>:8000` funciona desde el
-contenedor web, y la API alcanza la BD por su host de Coolify.
+1. **Error: `COPY failed: file not found` durante la compilación en Coolify**:
+   - **Causa**: Coolify usó la raíz del repositorio como contexto de compilación en lugar de la subcarpeta del servicio.
+   - **Solución**: En la configuración del servicio de Coolify, establece **Base Directory** en `/apps/api` para el backend y `/apps/web` para el frontend.
 
-## Notas
+2. **El contenedor API aparece como `unhealthy`**:
+   - **Causa**: Coolify realizó la verificación de salud antes de que PostgreSQL o las migraciones estuvieran listas.
+   - **Solución**: El endpoint `/api/v1/health` no requiere autenticación obligatoria. Asegúrate de que el Healthcheck Path en Coolify sea `/api/v1/health` en el puerto `8000`.
 
-- **CORS**: `ALLOWED_ORIGINS` debe incluir el dominio del frontend (ej. `https://web.dominio.com`).
-- **RAG sin Ollama**: la app arranca y funciona, pero las búsquedas de conocimiento y la
-  ingesta de documentos quedarán sin resultados (Ollama solo para embeddings).
-- **Variables secretas**: usa los secretos de Coolify para `*_API_KEY` y `*_SECRET`.
-- **Actualizaciones**: con Git pull + rebuild en Coolify, o el webhook del repo.
+3. **CORS Error desde la web de Astro o Dashboard**:
+   - **Solución**: Añade la URL completa de tu frontend (ej. `https://www.synckre.com`) a la variable `ALLOWED_ORIGINS` en las variables de entorno de Coolify.
