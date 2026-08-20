@@ -6,21 +6,23 @@ const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
 export { API_BASE };
 
-/** Devuelve la API key (variable de entorno del build; la cookie de auth es HttpOnly). */
+/** Devuelve opcionalmente una API key si existe (para compatibilidad). */
 export function getApiKey(): string {
   return process.env.NEXT_PUBLIC_INTERNAL_API_KEY || '';
 }
 
 export async function fetchApi(endpoint: string, options: RequestInit = {}) {
-  const apiKey = getApiKey();
-
-  // Detecta FormData para no forzar Content-Type JSON (el navegador pone el boundary multipart)
   const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData;
 
   const headers = {
-    'x-api-key': apiKey,
     ...(options.headers || {}),
   } as Record<string, string>;
+
+  // Si hay una API Key local la incluye, de lo contrario confía en Clerk Auth / Bearer token
+  const apiKey = getApiKey();
+  if (apiKey && !headers['x-api-key'] && !headers['Authorization']) {
+    headers['x-api-key'] = apiKey;
+  }
 
   if (!isFormData && !headers['Content-Type']) {
     headers['Content-Type'] = 'application/json';

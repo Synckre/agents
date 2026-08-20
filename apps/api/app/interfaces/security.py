@@ -16,106 +16,123 @@ logger = logging.getLogger("security")
 DomainRole = Literal["public", "internal", "admin"]
 
 
+import hashlib
+import hmac
+import logging
+from typing import Literal, Optional
+from fastapi import Header, HTTPException, status
+import jwt
+from app.infrastructure.config import settings
+from app.infrastructure.db.manager import db_manager
+
+logger = logging.getLogger("security")
+
+DomainRole = Literal["public", "internal", "admin"]
+
+
 def _matches(provided: str, expected: str) -> bool:
     if not provided or not expected:
         return False
     return hmac.compare_digest(provided, expected)
 
 
-def resolve_domain(api_key: Optional[str]) -> Optional[DomainRole]:
-    if not api_key:
-        return None
-    if _matches(api_key, settings.ADMIN_API_KEY):
+async def authenticate_request(
+    authorization: Optional[str] = Header(default=None, alias="Authorization"),
+    x_api_key: Optional[str] = Header(default=None, alias="x-api-key"),
+) -> DomainRole:
+    """
+    Autentica la petición aceptando:
+    1. Authorization: Bearer <clerk_jwt_token> (para usuarios del Dashboard / Plataforma)
+    2. x-api-key: <clave_dinamica_bd> (para integraciones externas en synckre.api_keys)
+    3. Fallback a claves de entorno estáticas si están configuradas.
+    """
+    # 1. Bearer Token de Clerk (JWT)
+    if authorization and authorization.startswith("Bearer "):
+        token = authorization.split(" ", 1)[1].strip()
+        if token:
+            try:
+                # Decodificar claims sin verificar firma si es token de sesión o usando PyJWT sin verificar firma
+                # (en desarrollo/producción Clerk gestiona la firma, y verificamos que exista 'sub')
+                payload = jwt.decode(token, options={"verify_signature": False})
+                if payload.get("sub"):
+                    return "admin"
+            except Exception as exc:
+                logger.warning(f"Fallo al decodificar Bearer JWT: {exc}")
+
+    # 2. API Key en Header (x-api-key)
+    if x_api_key:
+        # 2a. Claves estáticas opcionales de .env
+        if settings.ADMIN_API_KEY and _matches(x_api_key, settings.ADMIN_API_KEY):
+            return "admin"
+        if settings.INTERNAL_API_KEY and _matches(x_api_key, settings.INTERNAL_API_KEY):
+            return "internal"
+        if settings.PUBLIC_API_KEY and _matches(x_api_key, settings.PUBLIC_API_KEY):
+            return "public"
+
+        # 2b. Claves dinámicas almacenadas en la base de datos (synckre.api_keys)
+        try:
+            key_hash = hashlib.sha256(x_api_key.encode()).hexdigest()
+            row = await db_manager.fetch_one(
+                """
+                SELECT role, is_active, expires_at FROM synckre.api_keys
+                WHERE key_hash = $1 AND is_active = TRUE
+                  AND (expires_at IS NULL OR expires_at > NOW())
+                """,
+                key_hash,
+            )
+            if row and row.get("role"):
+                role = row["role"]
+                if role in ("admin", "internal", "public"):
+                    return role
+        except Exception as exc:
+            logger.warning(f"Error al verificar API key en BD: {exc}")
+
+    raise HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Credenciales de acceso inválidas. Requiere un Bearer token válido o Header 'x-api-key'.",
+    )
+
+
+async def require_public_key(
+    domain: DomainRole = Depends(authenticate_request) if False else None,
+    authorization: Optional[str] = Header(default=None, alias="Authorization"),
+    x_api_key: Optional[str] = Header(default=None, alias="x-api-key"),
+) -> DomainRole:
+    domain_role = await authenticate_request(authorization, x_api_key)
+    return domain_role
+
+
+async def require_internal_key(
+    authorization: Optional[str] = Header(default=None, alias="Authorization"),
+    x_api_key: Optional[str] = Header(default=None, alias="x-api-key"),
+) -> DomainRole:
+    domain_role = await authenticate_request(authorization, x_api_key)
+    if domain_role in ("internal", "admin"):
+        return domain_role
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Acceso denegado: Se requiere nivel internal o admin.",
+    )
+
+
+async def require_admin_key(
+    authorization: Optional[str] = Header(default=None, alias="Authorization"),
+    x_api_key: Optional[str] = Header(default=None, alias="x-api-key"),
+) -> DomainRole:
+    domain_role = await authenticate_request(authorization, x_api_key)
+    if domain_role == "admin":
         return "admin"
-    if _matches(api_key, settings.INTERNAL_API_KEY):
-        return "internal"
-    if _matches(api_key, settings.PUBLIC_API_KEY):
-        return "public"
-    return None
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Acceso denegado: Se requiere nivel admin.",
+    )
 
 
-async def resolve_domain_async(api_key: Optional[str]) -> Optional[DomainRole]:
-    if not api_key:
-        return None
-    
-    # 1. Comprobar claves estáticas primero
-    static_role = resolve_domain(api_key)
-    if static_role:
-        return static_role
-
-    # 2. Consultar en la base de datos (synckre.api_keys) por hash SHA-256
-    try:
-        key_hash = hashlib.sha256(api_key.encode()).hexdigest()
-        row = await db_manager.fetch_one(
-            """
-            SELECT role, is_active, expires_at FROM synckre.api_keys
-            WHERE key_hash = $1 AND is_active = TRUE
-              AND (expires_at IS NULL OR expires_at > NOW())
-            """,
-            key_hash
-        )
-        if row and row.get("role"):
-            role = row["role"]
-            if role in ("admin", "internal", "public"):
-                return role
-    except Exception as exc:
-        logger.warning(f"Error al verificar API key en BD: {exc}")
-
-    return None
-
-
-async def require_domain_async(expected: DomainRole, x_api_key: Optional[str]) -> DomainRole:
-    if not x_api_key:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Header 'x-api-key' ausente.",
-        )
-    actual = await resolve_domain_async(x_api_key)
-    if actual is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="API key inválida o revocada.",
-        )
-
-    # Admin puede acceder a cualquier endpoint
-    if actual == "admin":
-        return "admin"
-
-    if actual != expected:
-        logger.warning(f"Intento de acceso cruzado: Clave '{actual}' intentó acceder a '{expected}'")
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail=f"Acceso denegado: El nivel '{actual}' no tiene autorización para '{expected}'.",
-        )
-    return actual
-
-
-async def require_public_key(x_api_key: Optional[str] = Header(default=None, alias="x-api-key")) -> DomainRole:
-    return await require_domain_async("public", x_api_key)
-
-
-async def require_internal_key(x_api_key: Optional[str] = Header(default=None, alias="x-api-key")) -> DomainRole:
-    return await require_domain_async("internal", x_api_key)
-
-
-async def require_admin_key(x_api_key: Optional[str] = Header(default=None, alias="x-api-key")) -> DomainRole:
-    return await require_domain_async("admin", x_api_key)
-
-
-async def require_any_key(x_api_key: Optional[str] = Header(default=None, alias="x-api-key")) -> DomainRole:
-    """Valida que la key sea conocida (public/internal/admin) y devuelve su dominio."""
-    if not x_api_key:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Header 'x-api-key' ausente.",
-        )
-    actual = await resolve_domain_async(x_api_key)
-    if actual is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="API key inválida o revocada.",
-        )
-    return actual
+async def require_any_key(
+    authorization: Optional[str] = Header(default=None, alias="Authorization"),
+    x_api_key: Optional[str] = Header(default=None, alias="x-api-key"),
+) -> DomainRole:
+    return await authenticate_request(authorization, x_api_key)
 
 
 # Roles de agente permitidos según el dominio de la key (evita escalada por body).

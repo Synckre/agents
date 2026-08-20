@@ -19,7 +19,6 @@ export function useApiStatus(intervalMs = 30000): ApiStatus {
         const timer = setTimeout(() => controller.abort(), 4000);
         const res = await fetch(`${API_BASE}/api/v1/health`, {
           signal: controller.signal,
-          headers: { 'x-api-key': getApiKey() || 'synckre-pub-key-2026' },
         });
         clearTimeout(timer);
         const data = await res.json().catch(() => null);
