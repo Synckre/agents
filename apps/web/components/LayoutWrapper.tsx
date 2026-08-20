@@ -46,8 +46,8 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
       <Sidebar />
 
       <div className="flex-1 flex flex-col min-w-0 h-screen overflow-y-auto">
-        {/* Topbar — h-16 para alinear con el brand del sidebar */}
-        <header className="sticky top-0 z-20 h-16 shrink-0 flex items-center justify-between gap-4 border-b border-border bg-background/80 backdrop-blur px-4 lg:px-8">
+        {/* Topbar — h-16 (solo en desktop lg:flex) */}
+        <header className="hidden lg:flex sticky top-0 z-20 h-16 shrink-0 items-center justify-between gap-4 border-b border-border bg-background/80 backdrop-blur px-4 lg:px-8">
           <div className="flex items-center gap-2 min-w-0">
             <span className="lg:hidden size-7 rounded-md bg-primary text-primary-foreground flex items-center justify-center font-bold text-xs shrink-0">
               S

@@ -57,6 +57,25 @@ export function MobileNav() {
         </div>
 
         <div className="flex items-center gap-2">
+          <Badge
+            variant="outline"
+            className={cn(
+              'gap-1.5 text-[11px] font-mono py-0.5 px-2',
+              status === 'online' && 'text-foreground',
+              status === 'offline' && 'text-destructive border-destructive/30',
+              status === 'checking' && 'text-muted-foreground'
+            )}
+          >
+            <span
+              className={cn(
+                'size-1.5 rounded-full',
+                status === 'online' && 'bg-primary animate-pulse',
+                status === 'offline' && 'bg-destructive',
+                status === 'checking' && 'bg-muted animate-pulse'
+              )}
+            />
+            {status === 'online' ? 'API healthy' : status === 'offline' ? 'API offline' : '…'}
+          </Badge>
           <UserButton showName={false} appearance={{ elements: { userButtonAvatarBox: 'size-7' } }} />
         </div>
       </div>
