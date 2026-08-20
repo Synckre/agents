@@ -101,7 +101,7 @@ export function ThinkingTimeline({
                 {(() => {
                   const summary = summarize(step.result);
                   return summary ? (
-                    <p className="text-xs text-muted-foreground truncate mt-0.5">{summary}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed break-words">{summary}</p>
                   ) : null;
                 })()}
               </div>

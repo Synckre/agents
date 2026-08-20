@@ -479,7 +479,7 @@ export default function ConversationDetailPage() {
                       </div>
                     )}
 
-                    <div className="max-w-xl flex flex-col gap-1.5">
+                    <div className="max-w-[85%] sm:max-w-xl flex flex-col gap-1.5 min-w-0">
                       {/* Etiqueta del emisor */}
                       <div className={`flex items-center gap-1.5 pl-1 ${isUser ? 'justify-end pr-1' : ''}`}>
                         {isAgent && (
@@ -505,8 +505,8 @@ export default function ConversationDetailPage() {
 
                       {/* Burbuja: usuario y operador en card; la IA en texto plano (estilo ChatGPT/Claude) */}
                       {isUser ? (
-                        <div className="bg-primary text-primary-foreground rounded-2xl rounded-br-sm px-4 py-2.5 shadow-sm font-medium">
-                          <p className="whitespace-pre-wrap leading-relaxed">{msg.content}</p>
+                        <div className="bg-primary text-primary-foreground rounded-2xl rounded-br-sm px-3.5 py-2.5 shadow-sm font-medium">
+                          <p className="text-sm leading-relaxed whitespace-pre-wrap break-words">{msg.content}</p>
                         </div>
                       ) : isHuman ? (
                         <div className="bg-secondary text-secondary-foreground rounded-2xl rounded-tl-sm border border-border px-4 py-2.5">
