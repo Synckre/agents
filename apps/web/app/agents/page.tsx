@@ -57,7 +57,7 @@ export default function AgentsPage() {
           description="Permisos, capacidades y nivel de autonomía asignados a cada rol del Agent Runtime."
         />
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-5">
           {ROLES_LIST.map((role) => (
             <Card key={role.name}>
               <CardHeader className="border-b border-border pb-4">

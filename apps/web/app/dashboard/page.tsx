@@ -5,6 +5,8 @@ import Link from 'next/link';
 import { api } from '@/lib/api';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
+import { cn } from '@/lib/utils';
 import { Skeleton } from '@/components/ui/skeleton';
 import { PageHeader } from '@/components/PageHeader';
 import { PageTransition } from '@/components/PageTransition';
@@ -128,10 +130,17 @@ export default function DashboardPage() {
           title="Monitoreo y Telemetría"
           description="Seguimiento en tiempo real de integraciones y acciones del Agent Runtime."
           right={
-            <button onClick={loadData} disabled={loading} className="btn-ghost">
-              <RefreshCw className={loading ? 'animate-spin' : ''} />
-              <span>Actualizar</span>
-            </button>
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={loadData}
+              disabled={loading}
+              title="Actualizar datos"
+              aria-label="Actualizar datos"
+              className="size-9 rounded-lg border-border"
+            >
+              <RefreshCw className={cn("size-4", loading && 'animate-spin')} />
+            </Button>
           }
         />
 

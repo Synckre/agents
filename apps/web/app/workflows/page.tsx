@@ -205,13 +205,21 @@ export default function WorkflowsPage() {
           title="Workflows y tareas"
           description="Seguimiento de procesos, tareas y aprobaciones del Agent Runtime."
           right={
-            <Button variant="outline" size="sm" onClick={loadWorkflows} disabled={loading}>
-              <RefreshCw data-icon="inline-start" className={loading ? 'animate-spin' : ''} />
-              Refrescar
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={loadWorkflows}
+              disabled={loading}
+              title="Refrescar workflows"
+              aria-label="Refrescar workflows"
+              className="size-9 rounded-lg border-border"
+            >
+              <RefreshCw className={cn("size-4", loading && 'animate-spin')} />
             </Button>
           }
         />
 
+        {/* Responsive Grid / Stack */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Lista */}
           <Card className="lg:col-span-1">

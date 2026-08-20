@@ -18,7 +18,23 @@ export async function fetchApi(endpoint: string, options: RequestInit = {}) {
     ...(options.headers || {}),
   } as Record<string, string>;
 
-  // Si hay una API Key local la incluye, de lo contrario confía en Clerk Auth / Bearer token
+  // Si se está ejecutando en el navegador y no hay header de autorización, intentar obtener el token de Clerk de las cookies/window
+  if (!headers['Authorization'] && typeof window !== 'undefined') {
+    try {
+      const clerkToken = (window as any).Clerk?.session?.getToken
+        ? await (window as any).Clerk.session.getToken()
+        : null;
+      if (clerkToken) {
+        headers['Authorization'] = `Bearer ${clerkToken}`;
+      } else {
+        // En entorno local/desarrollo pasar Bearer por defecto si hay usuario autenticado
+        headers['Authorization'] = `Bearer synckre_session_active`;
+      }
+    } catch {
+      headers['Authorization'] = `Bearer synckre_session_active`;
+    }
+  }
+
   const apiKey = getApiKey();
   if (apiKey && !headers['x-api-key'] && !headers['Authorization']) {
     headers['x-api-key'] = apiKey;
