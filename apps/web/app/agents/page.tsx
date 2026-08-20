@@ -61,14 +61,14 @@ export default function AgentsPage() {
           {ROLES_LIST.map((role) => (
             <Card key={role.name}>
               <CardHeader className="border-b border-border pb-4">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-2.5">
-                    <span className="chip-icon">
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 sm:gap-3">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <span className="chip-icon shrink-0">
                       <Bot />
                     </span>
-                    <CardTitle>{role.name}</CardTitle>
+                    <CardTitle className="text-base sm:text-lg truncate">{role.name}</CardTitle>
                   </div>
-                  <Badge variant={role.autonomy.includes('3') ? 'warning' : 'success'} className="shrink-0">
+                  <Badge variant={role.autonomy.includes('3') ? 'warning' : 'success'} className="shrink-0 self-start sm:self-auto text-[11px]">
                     <ShieldCheck className="mr-1 size-3.5" />
                     {role.autonomy}
                   </Badge>

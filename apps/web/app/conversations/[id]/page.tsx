@@ -328,9 +328,9 @@ export default function ConversationDetailPage() {
   return (
     <PageTransition>
     <div className="flex flex-col gap-4 h-[calc(100vh-7rem)] overflow-hidden">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-zinc-800 pb-3 shrink-0">
-        <div className="flex items-center gap-3">
+      {/* Header (Buttons always on right) */}
+      <div className="flex items-center justify-between gap-3 border-b border-zinc-800 pb-3 shrink-0">
+        <div className="flex items-center gap-3 min-w-0">
           <Link
             href="/conversations"
             transitionTypes={['nav-back']}
@@ -340,20 +340,20 @@ export default function ConversationDetailPage() {
             <ArrowLeft className="size-4" />
           </Link>
           <div className="min-w-0">
-            <h2 className="text-lg sm:text-xl font-bold text-zinc-100 flex items-center gap-2 flex-wrap">
-              Conversación{' '}
+            <h2 className="text-base sm:text-xl font-bold text-zinc-100 flex items-center gap-2 flex-wrap">
+              <span className="truncate">Conversación</span>{' '}
               <ViewTransition name={`conv-${conversationId}`} share="text-morph" default="none">
-                <span className="font-mono text-zinc-400 font-bold">{conversationId}</span>
+                <span className="font-mono text-zinc-400 font-bold truncate">{conversationId}</span>
               </ViewTransition>
-              <Badge variant="secondary" className="text-[10px] uppercase shrink-0">
+              <Badge variant="secondary" className="text-[10px] uppercase shrink-0 hidden sm:inline-flex">
                 {role.replace(/_/g, ' ')}
               </Badge>
             </h2>
-            <p className="text-xs text-zinc-400">Canal de comunicación directo del Agent Runtime.</p>
+            <p className="text-xs text-zinc-400 truncate hidden sm:block">Canal de comunicación directo del Agent Runtime.</p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2 shrink-0 self-start sm:self-auto">
+        <div className="flex items-center gap-2 shrink-0 ml-auto">
           {/* Mobile Telemetry Inspector Modal Trigger */}
           <Button
             variant="outline"
