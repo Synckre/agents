@@ -137,18 +137,18 @@ export default function DashboardPage() {
 
         {/* Métricas */}
         {loading ? (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            <Skeleton className="h-28 rounded-2xl" />
-            <Skeleton className="h-28 rounded-2xl" />
-            <Skeleton className="h-28 rounded-2xl" />
-            <Skeleton className="h-28 rounded-2xl" />
+          <div className="flex overflow-x-auto snap-x snap-mandatory gap-3 sm:grid sm:grid-cols-2 lg:grid-cols-4 pb-2 sm:pb-0 scrollbar-none">
+            <Skeleton className="w-[82vw] max-w-[280px] shrink-0 snap-center sm:w-auto h-28 rounded-2xl" />
+            <Skeleton className="w-[82vw] max-w-[280px] shrink-0 snap-center sm:w-auto h-28 rounded-2xl" />
+            <Skeleton className="w-[82vw] max-w-[280px] shrink-0 snap-center sm:w-auto h-28 rounded-2xl" />
+            <Skeleton className="w-[82vw] max-w-[280px] shrink-0 snap-center sm:w-auto h-28 rounded-2xl" />
           </div>
         ) : (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="flex overflow-x-auto snap-x snap-mandatory gap-3 sm:grid sm:grid-cols-2 lg:grid-cols-4 pb-2 sm:pb-0 scrollbar-none">
             {STATS.map((stat) => {
               const Icon = stat.icon;
               return (
-                <Card key={stat.key}>
+                <Card key={stat.key} className="w-[82vw] max-w-[280px] shrink-0 snap-center sm:w-auto">
                   <CardContent className="p-5 flex items-center justify-between">
                     <div className="space-y-1">
                       <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
