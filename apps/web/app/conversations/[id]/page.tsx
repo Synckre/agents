@@ -323,11 +323,13 @@ export default function ConversationDetailPage() {
     }
   };
 
+  const [mobileTelemetryOpen, setMobileTelemetryOpen] = useState(false);
+
   return (
     <PageTransition>
-    <div className="flex flex-col gap-6 min-h-screen lg:h-[calc(100vh-6rem)] lg:min-h-0">
+    <div className="flex flex-col gap-4 h-[calc(100vh-7rem)] overflow-hidden">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-zinc-800 pb-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-zinc-800 pb-3 shrink-0">
         <div className="flex items-center gap-3">
           <Link
             href="/conversations"
@@ -352,6 +354,18 @@ export default function ConversationDetailPage() {
         </div>
 
         <div className="flex items-center gap-2 shrink-0 self-start sm:self-auto">
+          {/* Mobile Telemetry Inspector Modal Trigger */}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setMobileTelemetryOpen(true)}
+            title="Ver telemetría técnica"
+            className="lg:hidden gap-1.5 px-2 text-xs"
+          >
+            <Terminal className="size-3.5 text-muted-foreground" />
+            <span>{telemetryLogs.length} ejec.</span>
+          </Button>
+
           {/* Role Selection (shadcn Select) */}
           <div className="hidden md:flex items-center gap-2">
             <span className="text-xs text-zinc-400 font-semibold">Rol del Agente:</span>
@@ -404,7 +418,7 @@ export default function ConversationDetailPage() {
 
       {/* Banner modo operador humano */}
       {humanMode && (
-        <div className="flex items-center justify-between gap-3 rounded-xl border border-border bg-secondary/60 px-4 py-3 animate-fade-slide-in">
+        <div className="flex items-center justify-between gap-3 rounded-xl border border-border bg-secondary/60 px-4 py-3 shrink-0 animate-fade-slide-in">
           <div className="flex items-center gap-3 text-sm text-foreground">
             <Headset className="size-5 text-muted-foreground shrink-0" />
             <div>
@@ -422,7 +436,7 @@ export default function ConversationDetailPage() {
 
       {/* Aviso: mensaje del cliente en cola (atención humana activa) */}
       {queuedNote && (
-        <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-muted/40 px-4 py-2.5 animate-fade-slide-in">
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-muted/40 px-4 py-2.5 shrink-0 animate-fade-slide-in">
           <p className="text-sm text-foreground flex items-center gap-2">
             <Info className="size-4 shrink-0" />
             {queuedNote}
@@ -437,10 +451,10 @@ export default function ConversationDetailPage() {
         </div>
       )}
 
-      {/* Main Split Grid: Left Chat, Right Inspector (Stacked on Mobile, 2:1 on Desktop) */}
-      <div className="flex flex-col lg:grid lg:grid-cols-3 gap-6 flex-1 overflow-y-auto lg:overflow-hidden">
-        {/* Left: Chat Area (2 cols) */}
-        <div className="lg:col-span-2 flex flex-col justify-between overflow-hidden pr-2">
+      {/* Main Split Grid: Left Chat (Full height with normal scroll), Right Inspector (Desktop inline, Mobile modal) */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1 overflow-hidden min-h-0">
+        {/* Left: Chat Area (2 cols on desktop, 1 col full height on mobile) */}
+        <div className="lg:col-span-2 flex flex-col justify-between overflow-hidden h-full">
           <div className="flex-1 overflow-y-auto space-y-4 pr-1">
             {messages.length === 0 && !isStreaming ? (
               <div className="py-24 text-center text-zinc-500 text-sm">
@@ -573,8 +587,8 @@ export default function ConversationDetailPage() {
           </form>
         </div>
 
-        {/* Right: Technical Telemetry Inspector (1 col) */}
-        <Card className="flex flex-col justify-between overflow-hidden">
+        {/* Right: Technical Telemetry Inspector (Desktop inline 1-col, hidden on mobile) */}
+        <Card className="hidden lg:flex flex-col justify-between overflow-hidden">
           <div className="p-5 border-b border-border flex items-center justify-between gap-2 bg-muted/30">
             <div className="flex items-center gap-2">
               <Terminal className="size-4 text-muted-foreground" />
@@ -653,6 +667,100 @@ export default function ConversationDetailPage() {
           </div>
         </Card>
       </div>
+
+      {/* Modal / Sheet de Telemetría para Dispositivos Móviles */}
+      {mobileTelemetryOpen && (
+        <div className="lg:hidden fixed inset-0 z-50 flex justify-end">
+          <div
+            onClick={() => setMobileTelemetryOpen(false)}
+            className="fixed inset-0 bg-zinc-950/80 backdrop-blur-sm animate-fade-slide-in"
+          />
+          <div className="relative w-full max-w-lg bg-background h-full border-l border-border p-5 flex flex-col justify-between z-10 shadow-2xl animate-fade-slide-in">
+            <div className="flex items-center justify-between pb-4 border-b border-border">
+              <div className="flex items-center gap-2">
+                <Terminal className="size-5 text-muted-foreground" />
+                <span className="font-bold text-foreground text-base">Inspector de telemetría</span>
+              </div>
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => setMobileTelemetryOpen(false)}
+                className="size-8"
+              >
+                <X className="size-4" />
+              </Button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto py-4 space-y-3.5">
+              {telemetryLogs.length === 0 ? (
+                <div className="text-center py-12 text-xs text-zinc-500">
+                  Esperando eventos técnicos...
+                  <br />
+                  <span className="text-zinc-600 mt-1 block">Envía un mensaje que use una tool para ver telemetría.</span>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {telemetryLogs.map((log, idx) => (
+                    <details
+                      key={log.id || idx}
+                      className={`group p-3 rounded-lg font-mono text-xs space-y-1.5 border bg-card text-foreground transition ${statusTint(log.status)}`}
+                    >
+                      <summary className="flex items-center justify-between cursor-pointer list-none">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <ChevronDown className="size-3 text-muted-foreground group-open:rotate-180 transition-transform shrink-0" />
+                          <span className="text-foreground font-bold truncate">{log.tool_name}</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          {statusBadge(log.status)}
+                        </div>
+                      </summary>
+
+                      <div className="pt-2 space-y-1.5 border-t border-border mt-1.5">
+                        <div className="flex items-center justify-between text-muted-foreground">
+                          <span className="flex items-center gap-1">
+                            <Clock className="size-3" />
+                            {new Date(log.created_at).toLocaleTimeString()}
+                          </span>
+                          <span className="flex items-center gap-1">
+                            <Timer className="size-3" />
+                            {log.execution_time_ms} ms
+                          </span>
+                        </div>
+
+                        {log.input_data && Object.keys(log.input_data).length > 0 && (
+                          <div>
+                            <p className="text-muted-foreground font-semibold mb-1">Params:</p>
+                            <pre className="bg-muted/40 border border-border rounded p-2 text-xs text-foreground/90 overflow-x-auto max-h-28 overflow-y-auto whitespace-pre-wrap break-words">
+                              {JSON.stringify(log.input_data, null, 2)}
+                            </pre>
+                          </div>
+                        )}
+
+                        {log.output_data && (
+                          <div>
+                            <p className="text-muted-foreground font-semibold mb-1">Resultado:</p>
+                            <pre className="bg-muted/40 border border-border rounded p-2 text-xs text-foreground/90 overflow-x-auto max-h-28 overflow-y-auto whitespace-pre-wrap break-words">
+                              {JSON.stringify(log.output_data, null, 2)}
+                            </pre>
+                          </div>
+                        )}
+                      </div>
+                    </details>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="pt-3 border-t border-border flex items-center justify-between text-xs text-muted-foreground font-mono">
+              <span className="flex items-center gap-1.5">
+                <Database className="size-3.5" />
+                Telemetría tool_executions
+              </span>
+              <Badge variant="secondary" className="text-[10px]">{telemetryLogs.length} ejec.</Badge>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Modal de confirmación de eliminación (shadcn AlertDialog) */}
       <AlertDialog
