@@ -12,6 +12,7 @@ import {
   Settings,
   GitBranch,
 } from 'lucide-react';
+import { UserButton } from '@clerk/nextjs';
 import { cn } from '@/lib/utils';
 
 const ITEMS = [
@@ -29,7 +30,8 @@ export function MobileNav() {
   const pathname = usePathname();
 
   return (
-    <nav className="lg:hidden flex gap-1 overflow-x-auto px-4 py-2 border-b border-zinc-800/70 bg-zinc-950/60">
+    <nav className="lg:hidden flex items-center justify-between gap-1 overflow-x-auto px-4 py-2 border-b border-zinc-800/70 bg-zinc-950/60">
+      <div className="flex items-center gap-1">
       {ITEMS.map((item) => {
         const Icon = item.icon;
         const active = pathname === item.href || pathname.startsWith(item.href + '/');
@@ -50,6 +52,8 @@ export function MobileNav() {
           </Link>
         );
       })}
+      </div>
+      <UserButton showName={false} />
     </nav>
   );
 }

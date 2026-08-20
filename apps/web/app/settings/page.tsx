@@ -212,9 +212,9 @@ export default function SettingsPage() {
                 onChange={(e) => setNewKeyRole(e.target.value)}
                 className="bg-zinc-950 border border-zinc-800 text-zinc-100 rounded-lg px-3 py-2 text-xs focus:outline-none focus:border-zinc-700"
               >
-                <option value="public">Rol Public</option>
-                <option value="internal">Rol Internal</option>
-                <option value="admin">Rol Admin</option>
+                <option value="public">Acceso Público (Formularios / Widget Web)</option>
+                <option value="internal">Acceso Integración (ERP / Webhooks / API)</option>
+                <option value="admin">Acceso Completo (Administrador)</option>
               </select>
               <Button type="submit" disabled={creating || !newKeyName.trim()} className="gap-1.5 text-xs font-semibold">
                 <Plus className="size-4" />
@@ -229,7 +229,7 @@ export default function SettingsPage() {
                   <tr>
                     <th className="p-3">Nombre</th>
                     <th className="p-3">Prefijo Key</th>
-                    <th className="p-3">Rol</th>
+                    <th className="p-3">Nivel de Acceso</th>
                     <th className="p-3">Estado</th>
                     <th className="p-3 text-right">Acciones</th>
                   </tr>
@@ -250,7 +250,7 @@ export default function SettingsPage() {
                         <td className="p-3 text-muted-foreground">{item.prefix}...</td>
                         <td className="p-3">
                           <Badge variant="outline" className="font-mono text-[10px]">
-                            {item.role}
+                            {item.role === 'admin' ? 'Administrador' : item.role === 'internal' ? 'Integración API' : 'Acceso Público'}
                           </Badge>
                         </td>
                         <td className="p-3">

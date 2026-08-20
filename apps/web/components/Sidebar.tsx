@@ -3,6 +3,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
+import { UserButton, SignOutButton } from '@clerk/nextjs';
 import {
   LayoutDashboard,
   MessageSquare,
@@ -13,6 +14,7 @@ import {
   GitBranch,
   Activity,
   Zap,
+  LogOut,
   type LucideIcon,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -109,10 +111,29 @@ export function Sidebar() {
         ))}
       </nav>
 
-      {/* Footer status */}
-      <div className="px-4 py-3 border-t border-border">
+      {/* Footer status & User Account */}
+      <div className="px-4 py-3 border-t border-border space-y-3">
+        {/* User Account / Sign Out */}
+        <div className="flex items-center justify-between gap-2 p-2 rounded-lg bg-muted/40 border border-border/50">
+          <div className="flex items-center gap-2 min-w-0">
+            <UserButton showName={false} appearance={{ elements: { userButtonAvatarBox: 'size-7' } }} />
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-medium text-foreground truncate">Usuario Conectado</p>
+              <p className="text-[10px] text-muted-foreground truncate">Sesión Activa</p>
+            </div>
+          </div>
+          <SignOutButton>
+            <button
+              title="Cerrar Sesión"
+              className="p-1.5 rounded-md hover:bg-red-950/30 text-muted-foreground hover:text-red-400 transition"
+            >
+              <LogOut className="size-4" />
+            </button>
+          </SignOutButton>
+        </div>
+
         <div className="flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
             <span
               className={cn(
                 'size-2 rounded-full',
@@ -129,10 +150,6 @@ export function Sidebar() {
           <Badge variant="outline" className="text-[10px] font-mono">
             v2.2.0
           </Badge>
-        </div>
-        <div className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground/60">
-          <Zap className="size-3.5" />
-          <span className="truncate">Agent Runtime · Enterprise</span>
         </div>
       </div>
     </aside>
