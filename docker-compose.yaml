@@ -1,33 +1,52 @@
 name: agent_synckre
 
-# Synckre Agent V2 — Enterprise Architecture Compose (Telemetry Focus, No Temporal)
+# Synckre Agent V2 — Enterprise Architecture Compose
 # Stack: Frontend (Next.js) + API (FastAPI) + Postgres (pgvector) + Ollama
+#
+# Coolify: asigna dominio al servicio `frontend` (puerto 3000) y `api` (puerto 8000).
+# Healthcheck Path en la UI: /healthz (ambos). Si usas `/` el frontend redirige a Clerk → 503.
 
 services:
   frontend:
     build:
       context: .
       dockerfile: apps/web/Dockerfile
-      # Las NEXT_PUBLIC_* se hornean en el build (producción)
       args:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
-        NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
-    container_name: synckre_frontend
+        NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:-}
     restart: unless-stopped
+    expose:
+      - "3000"
     ports:
       - "3000:3000"
     environment:
       - API_URL=${API_URL:-http://api:8000}
       - CLERK_SECRET_KEY=${CLERK_SECRET_KEY:-}
+      # Coolify usa el sufijo _3000 para saber el puerto del proxy (evita Traefik :80 → 503)
+      - SERVICE_FQDN_FRONTEND_3000=${SERVICE_FQDN_FRONTEND_3000:-}
+      - SERVICE_URL_FRONTEND_3000=${SERVICE_URL_FRONTEND_3000:-}
     depends_on:
       - api
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "require('http').get('http://127.0.0.1:3000/healthz',(r)=>{r.resume();process.exit(r.statusCode===200?0:1)}).on('error',()=>process.exit(1))",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 25s
 
   api:
     build:
       context: .
       dockerfile: apps/api/Dockerfile
-    container_name: synckre_api
     restart: unless-stopped
+    expose:
+      - "8000"
     ports:
       - "8000:8000"
     environment:
@@ -56,6 +75,8 @@ services:
       - ERPNEXT_API_KEY=${ERPNEXT_API_KEY:-}
       - ERPNEXT_API_SECRET=${ERPNEXT_API_SECRET:-}
       - ERPNEXT_GOOGLE_CALENDAR=${ERPNEXT_GOOGLE_CALENDAR:-}
+      - SERVICE_FQDN_API_8000=${SERVICE_FQDN_API_8000:-}
+      - SERVICE_URL_API_8000=${SERVICE_URL_API_8000:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -64,11 +85,10 @@ services:
       interval: 10s
       timeout: 3s
       retries: 8
-      start_period: 10s
+      start_period: 40s
 
   postgres:
     image: pgvector/pgvector:pg16
-    container_name: synckre_postgres
     restart: unless-stopped
     expose:
       - "5432"
@@ -86,7 +106,6 @@ services:
 
   ollama:
     image: ollama/ollama:latest
-    container_name: synckre_ollama
     restart: unless-stopped
     expose:
       - "11434"

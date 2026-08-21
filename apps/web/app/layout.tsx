@@ -26,8 +26,16 @@ export default function RootLayout({
   children: React.ReactNode
 }>) {
   const clerkPubKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || "";
+  const htmlClass = cn("dark antialiased", fontMono.variable, "font-sans", geist.variable);
+
   if (!clerkPubKey.startsWith("pk_")) {
-    throw new Error("Falta NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY (debe empezar por pk_).");
+    return (
+      <html lang="es" className={htmlClass}>
+        <body className="bg-zinc-950 text-zinc-100 min-h-screen p-8">
+          <p>Falta NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY en el build de Coolify (Build Argument / env).</p>
+        </body>
+      </html>
+    );
   }
 
   return (
@@ -39,7 +47,7 @@ export default function RootLayout({
       <html
         lang="es"
         suppressHydrationWarning
-        className={cn("dark antialiased", fontMono.variable, "font-sans", geist.variable)}
+        className={htmlClass}
       >
         <body className="bg-zinc-950 text-zinc-100 min-h-screen" suppressHydrationWarning>
           <ThemeProvider>

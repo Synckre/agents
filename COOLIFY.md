@@ -19,9 +19,15 @@ Esta opción despliega todo el stack (`frontend`, `api`, `postgres`, `ollama`) a
 2. Selecciona **Docker Compose**.
 3. Elige tu proveedor de Git (GitHub / GitLab / Git Repository URL) y selecciona el repositorio de `AgentSynckre`.
 4. En **Branch**, selecciona `main` (o tu rama de producción).
-5. Coolify detectará automáticamente el archivo `docker-compose.yml` en la raíz.
+5. Coolify detectará automáticamente el archivo `docker-compose.yaml` en la raíz.
 6. En la pestaña **Environment Variables** de Coolify, añade tus credenciales (ver sección *Variables de Entorno*).
-7. Haz clic en **Deploy**.
+7. En **Domains** (Compose):
+   - servicio `frontend` → `https://control-ai.synckre.com` **puerto 3000**
+   - servicio `api` → `https://agent.synckre.com` **puerto 8000**
+8. **Healthcheck Path** (si Coolify lo pide): `/healthz` en frontend y en API. **No uses `/`**: el frontend redirige a Clerk y Traefik marca *unhealthy* → `503 no available server`.
+9. Build Argument / env: `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` tiene que estar en el **build** (no solo runtime).
+10. Haz clic en **Deploy**.
+11. Logs del contenedor `api` / `frontend`: si ves *unhealthy*, el proxy no enruta (503). Espera el `start_period` (~40s API, ~25s frontend).
 
 ---
 

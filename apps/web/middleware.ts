@@ -5,6 +5,7 @@ const isPublicPage = createRouteMatcher([
   '/login(.*)',
   '/sign-in(.*)',
   '/sso-callback(.*)',
+  '/healthz(.*)',
 ]);
 
 const isPublicApi = createRouteMatcher([
