@@ -60,10 +60,26 @@ class Settings(BaseSettings):
     )
     API_KEY_HEADER_NAME: str = "x-api-key"
 
-    # CORS
+    # CORS — localhost + Control Center de producción.
+    # También se aceptan orígenes https://*.synckre.com vía regex en main.py.
     ALLOWED_ORIGINS: str = os.getenv(
         "ALLOWED_ORIGINS",
-        "http://localhost:3000,http://127.0.0.1:3000,http://localhost:8000,http://localhost:4321,http://127.0.0.1:4321",
+        ",".join(
+            [
+                "http://localhost:3000",
+                "http://127.0.0.1:3000",
+                "http://localhost:8000",
+                "http://localhost:4321",
+                "http://127.0.0.1:4321",
+                "https://control-ai.synckre.com",
+                "https://www.synckre.com",
+                "https://synckre.com",
+            ]
+        ),
+    )
+    ALLOWED_ORIGIN_REGEX: str = os.getenv(
+        "ALLOWED_ORIGIN_REGEX",
+        r"https://([a-z0-9-]+\.)?synckre\.com",
     )
 
     # RAG / Ollama Embeddings

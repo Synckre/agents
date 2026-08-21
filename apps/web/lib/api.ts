@@ -1,10 +1,23 @@
 /**
  * Cliente API para conectar la interfaz de Next.js con la API v1 de Synckre Agent V2.
+ *
+ * En el navegador se usa same-origin (`/api/v1/...`) para evitar CORS.
+ * El route handler `app/api/v1/[...path]` reenvía al backend (API_URL).
+ * En servidor se llama directo al backend.
  */
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+export function getApiBase(): string {
+  if (typeof window !== 'undefined') {
+    return '';
+  }
+  return (process.env.API_URL || process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000').replace(
+    /\/$/,
+    '',
+  );
+}
 
-export { API_BASE };
+/** En el navegador es always same-origin; en servidor apunta al backend. */
+export const API_BASE = getApiBase();
 
 /** Devuelve opcionalmente una API key si existe (para compatibilidad). */
 export function getApiKey(): string {
@@ -44,7 +57,7 @@ export async function fetchApi(endpoint: string, options: RequestInit = {}) {
     headers['Content-Type'] = 'application/json';
   }
 
-  const response = await fetch(`${API_BASE}${endpoint}`, {
+  const response = await fetch(`${getApiBase()}${endpoint}`, {
     ...options,
     headers,
   });

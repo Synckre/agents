@@ -31,10 +31,10 @@ Si prefieres separar los servicios en Coolify o conectar a una base de datos Pos
 
 #### Servicio 1: API (FastAPI Backend)
 - **Resource Type**: Application (Docker File)
-- **Base Directory**: `/apps/api`
-- **Dockerfile Location**: `/Dockerfile` (o `apps/api/Dockerfile`)
+- **Base Directory**: `/` (raíz del repo: el Dockerfile hace `COPY apps/api/...`)
+- **Dockerfile Location**: `apps/api/Dockerfile`
 - **Port**: `8000`
-- **Healthcheck Path**: `/api/v1/health`
+- **Healthcheck Path**: `/healthz` (liveness, sin DB). No uses `/api/v1/health` para Traefik: si Postgres tarda, Coolify marca *unhealthy* y el dominio responde `no available server`.
 
 #### Servicio 2: Web (Next.js Control Center)
 - **Resource Type**: Application (Docker File)
@@ -42,7 +42,8 @@ Si prefieres separar los servicios en Coolify o conectar a una base de datos Pos
 - **Dockerfile Location**: `/Dockerfile` (o `apps/web/Dockerfile`)
 - **Port**: `3000`
 - **Build Arguments**:
-  - `NEXT_PUBLIC_API_URL`: URL pública de la API (ej. `https://api.tu-dominio.com`)
+  - `NEXT_PUBLIC_API_URL`: URL pública de la API (ej. `https://agent.synckre.com`). El navegador ya no la usa (same-origin `/api/v1`); sí hace falta `API_URL` en runtime.
+  - `API_URL`: URL del backend FastAPI que el proxy de Next llama en servidor (interna de Docker o `https://agent.synckre.com`). **No** pongas aquí la URL del propio frontend.
   - `NEXT_PUBLIC_INTERNAL_API_KEY`: Tu clave `INTERNAL_API_KEY`
 
 ---
@@ -60,7 +61,7 @@ Configura las siguientes variables en la sección **Environment Variables** del 
 | `PUBLIC_API_KEY` | Clave para sitio web/clientes públicos | Generar string seguro |
 | `INTERNAL_API_KEY` | Clave para empleados/dashboard web | Generar string seguro |
 | `ADMIN_API_KEY` | Clave administrativa backend | Generar string seguro |
-| `ALLOWED_ORIGINS` | Orígenes CORS permitidos (separados por coma) | `https://www.synckre.com,https://api.synckre.com` |
+| `ALLOWED_ORIGINS` | Orígenes CORS permitidos (separados por coma) | `https://control-ai.synckre.com,https://www.synckre.com` |
 | `POSTGRES_USER` | Usuario de PostgreSQL | `postgres` |
 | `POSTGRES_PASSWORD` | Contraseña de PostgreSQL | Generar contraseña segura |
 | `POSTGRES_DB` | Nombre de la base de datos | `langgraph_db` |
@@ -91,9 +92,13 @@ Configura las siguientes variables en la sección **Environment Variables** del 
    - **Causa**: la URI de la BD se arma con variables de plantilla de Coolify sin valor.
    - **Solución**: define `POSTGRES_HOST=postgres` y `POSTGRES_PORT=5432` (o usa `POSTGRES_URI` con una URI completa y concreta).
 
-2. **El contenedor API aparece como `unhealthy`**:
-   - **Causa**: el healthcheck de Coolify hace un GET plano a `/api/v1/health`, pero ese endpoint **exige la key** (`x-api-key`) y devolvería 401.
-   - **Solución**: el Dockerfile de la API ya incluye un `HEALTHCHECK` que envía `x-api-key: $INTERNAL_API_KEY` (Coolify lo respeta). Si usas el healthcheck HTTP de Coolify, configura el header `x-api-key` con tu `INTERNAL_API_KEY`, o deja que Coolify use el healthcheck del Dockerfile.
+2. **El contenedor API aparece como `unhealthy` / el dominio responde `no available server`**:
+   - **Causa**: Traefik solo enruta a contenedores *healthy*. Si el healthcheck pega a `/api/v1/health` y ese handler espera Postgres/Ollama (o un `x-api-key`), el check falla, Coolify saca el contenedor y el proxy responde `503 no available server`.
+   - **Solución**: Healthcheck Path = `/healthz` (o `/api/v1/live`). Puerto **8000**. Reinicia el recurso API y mira logs de arranque (import error, Postgres, crash loop). El proceso tiene que estar *running* y *healthy* para que `https://agent.synckre.com` deje de devolver 503.
 
-3. **CORS Error desde la web de Astro o Dashboard**:
-   - **Solución**: Añade la URL completa de tu frontend (ej. `https://www.synckre.com`) a la variable `ALLOWED_ORIGINS` en las variables de entorno de Coolify.
+3. **CORS Error desde el Dashboard (`control-ai.synckre.com` → `agent.synckre.com`)**:
+   - **Causa frecuente**: Traefik/Coolify responde `503 no available server` (API caída o unhealthy). Ese 503 **no lleva** `Access-Control-Allow-Origin`, y el navegador lo reporta como CORS.
+   - **Solución**:
+     1. Reinicia el servicio API hasta que `/api/v1/health` responda 200 (no 503).
+     2. Añade `https://control-ai.synckre.com` a `ALLOWED_ORIGINS` en Coolify.
+     3. En el frontend, define `API_URL` hacia el backend (no hacia `control-ai`). El dashboard llama same-origin `/api/v1` y Next hace de proxy.

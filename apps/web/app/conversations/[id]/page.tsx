@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useRef } from 'react';
 import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import { ViewTransition } from 'react';
-import { api, API_BASE, getApiKey } from '@/lib/api';
+import { api, getApiBase, getApiKey } from '@/lib/api';
 import {
   Send,
   Bot,
@@ -153,7 +153,7 @@ export default function ConversationDetailPage() {
   const openStream = () => {
     closeStream();
     const es = new EventSource(
-      `${API_BASE}/api/v1/conversations/${conversationId}/events?key=${encodeURIComponent(getApiKey())}`
+      `${getApiBase()}/api/v1/conversations/${conversationId}/events?key=${encodeURIComponent(getApiKey())}`
     );
     es.onmessage = (ev) => {
       try {

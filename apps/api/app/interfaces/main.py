@@ -3,6 +3,7 @@ Aplicación Principal FastAPI para Synckre Agent V2.
 Monta la API REST versionada (/api/v1) y gestiona el ciclo de vida del servicio.
 """
 
+import asyncio
 import json
 import logging
 import time
@@ -40,15 +41,22 @@ logging.basicConfig(
 logger = logging.getLogger("main_v2")
 
 
+async def _connect_db_background() -> None:
+    """Conecta Postgres sin bloquear el bind de uvicorn (Traefik necesita puerto abierto)."""
+    try:
+        async with asyncio.timeout(20):
+            await db_manager.connect()
+    except Exception as exc:
+        logger.warning("PostgreSQL no disponible al arrancar: %s", exc)
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Iniciando Synckre Agent Enterprise Runtime API.")
-    try:
-        await db_manager.connect()
-    except Exception as exc:
-        logger.warning("PostgreSQL no disponible al arrancar: %s", exc)
+    db_task = asyncio.create_task(_connect_db_background())
     await reminder_scheduler.start()
     yield
+    db_task.cancel()
     await reminder_scheduler.stop()
     await db_manager.disconnect()
     await erpnext_client.aclose()
@@ -66,15 +74,6 @@ app = FastAPI(
 
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.allowed_origins_list,
-    allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allow_headers=["*"],
-)
-
 
 @app.middleware("http")
 async def access_log_middleware(request: Request, call_next):
@@ -112,6 +111,18 @@ app.include_router(analytics_router)
 app.include_router(calendar_router)
 app.include_router(api_keys_router)
 
+# CORS como middleware más externo: cubre preflight OPTIONS y errores 4xx/5xx
+# de FastAPI. Un 503 de Traefik/Coolify (API caída) no pasa por aquí.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.allowed_origins_list,
+    allow_origin_regex=settings.ALLOWED_ORIGIN_REGEX or None,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    max_age=600,
+)
+
 
 @app.get("/")
 async def root():
@@ -120,7 +131,15 @@ async def root():
         "status": "online",
         "docs": "/docs",
         "health": "/api/v1/health",
+        "live": "/healthz",
     }
+
+
+@app.get("/healthz", include_in_schema=False)
+@app.get("/api/v1/live", include_in_schema=False)
+async def liveness():
+    """Liveness para Coolify/Traefik: 200 inmediato, sin Postgres ni Ollama."""
+    return {"status": "ok"}
 
 
 if __name__ == "__main__":

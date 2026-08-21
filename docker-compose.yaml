@@ -45,7 +45,7 @@ services:
       - PUBLIC_API_KEY=${PUBLIC_API_KEY:-synckre-pub-key-2026}
       - INTERNAL_API_KEY=${INTERNAL_API_KEY:-synckre-int-key-2026}
       - ADMIN_API_KEY=${ADMIN_API_KEY:-synckre-admin-key-2026}
-      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000,http://localhost:8000,http://localhost:4321,http://127.0.0.1:4321}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000,http://localhost:8000,http://localhost:4321,http://127.0.0.1:4321,https://control-ai.synckre.com,https://www.synckre.com,https://synckre.com}
       - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://ollama:11434}
       - EMBEDDING_MODEL=${EMBEDDING_MODEL:-qwen3-embedding:0.6b}
       - TOP_K=${TOP_K:-4}
@@ -61,11 +61,11 @@ services:
       postgres:
         condition: service_healthy
     healthcheck:
-      test: ["CMD-SHELL", "python3 -c 'import urllib.request; urllib.request.urlopen(\"http://127.0.0.1:8000/api/v1/health\")'"]
+      test: ["CMD-SHELL", "python3 -c 'import urllib.request; urllib.request.urlopen(\"http://127.0.0.1:8000/healthz\", timeout=2)'"]
       interval: 10s
-      timeout: 5s
+      timeout: 3s
       retries: 8
-      start_period: 15s
+      start_period: 10s
 
   postgres:
     image: pgvector/pgvector:pg16

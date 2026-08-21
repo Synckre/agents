@@ -38,6 +38,8 @@ class ReminderScheduler:
                 pass
 
     async def _process_due(self) -> None:
+        if db_manager.pool is None or db_manager.pool.closed:
+            return
         now = datetime.now(timezone.utc)
         # Reclamación atómica: SELECT ... FOR UPDATE SKIP LOCKED dentro de una
         # transacción, y cada recordatorio se marca enviado/error en la misma
