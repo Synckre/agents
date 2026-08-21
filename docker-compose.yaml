@@ -22,9 +22,8 @@ services:
     environment:
       - API_URL=${API_URL:-http://api:8000}
       - CLERK_SECRET_KEY=${CLERK_SECRET_KEY:-}
-      # Coolify usa el sufijo _3000 para saber el puerto del proxy (evita Traefik :80 → 503)
-      - SERVICE_FQDN_FRONTEND_3000=${SERVICE_FQDN_FRONTEND_3000:-}
-      - SERVICE_URL_FRONTEND_3000=${SERVICE_URL_FRONTEND_3000:-}
+      # Coolify: proxy HTTPS → contenedor puerto 3000
+      - SERVICE_URL_FRONTEND_3000=https://control-ai.synckre.com
     depends_on:
       - api
     healthcheck:
@@ -47,8 +46,6 @@ services:
     restart: unless-stopped
     expose:
       - "8000"
-    ports:
-      - "8000:8000"
     environment:
       - ENV=${ENV:-production}
       - COMPANY_NAME=${COMPANY_NAME:-Synckre}
@@ -75,8 +72,8 @@ services:
       - ERPNEXT_API_KEY=${ERPNEXT_API_KEY:-}
       - ERPNEXT_API_SECRET=${ERPNEXT_API_SECRET:-}
       - ERPNEXT_GOOGLE_CALENDAR=${ERPNEXT_GOOGLE_CALENDAR:-}
-      - SERVICE_FQDN_API_8000=${SERVICE_FQDN_API_8000:-}
-      - SERVICE_URL_API_8000=${SERVICE_URL_API_8000:-}
+      # Coolify: sin :8000 Traefik busca el puerto 80 y responde 503 no available server
+      - SERVICE_URL_API_8000=https://agent.synckre.com
     depends_on:
       postgres:
         condition: service_healthy

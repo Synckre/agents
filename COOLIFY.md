@@ -21,9 +21,10 @@ Esta opción despliega todo el stack (`frontend`, `api`, `postgres`, `ollama`) a
 4. En **Branch**, selecciona `main` (o tu rama de producción).
 5. Coolify detectará automáticamente el archivo `docker-compose.yaml` en la raíz.
 6. En la pestaña **Environment Variables** de Coolify, añade tus credenciales (ver sección *Variables de Entorno*).
-7. En **Domains** (Compose):
-   - servicio `frontend` → `https://control-ai.synckre.com` **puerto 3000**
-   - servicio `api` → `https://agent.synckre.com` **puerto 8000**
+7. En **Domains** de cada servicio del Compose (imprescindible el puerto del *contenedor*):
+   - `frontend` → `https://control-ai.synckre.com:3000`
+   - `api` → `https://agent.synckre.com:8000`
+   El `:8000` no se ve en el navegador; solo le dice a Traefik a qué puerto interno enviar. Si pones `https://agent.synckre.com` **sin** `:8000`, Coolify asume puerto **80** y obtienes `503 no available server`.
 8. **Healthcheck Path** (si Coolify lo pide): `/healthz` en frontend y en API. **No uses `/`**: el frontend redirige a Clerk y Traefik marca *unhealthy* → `503 no available server`.
 9. Build Argument / env: `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` tiene que estar en el **build** (no solo runtime).
 10. Haz clic en **Deploy**.
