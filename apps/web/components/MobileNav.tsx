@@ -147,7 +147,7 @@ export function MobileNav() {
                     <p className="text-[10px] text-muted-foreground truncate">Sesión Activa</p>
                   </div>
                 </div>
-                <SignOutButton>
+                <SignOutButton redirectUrl="/login">
                   <button className="p-1.5 rounded-md text-muted-foreground hover:text-red-400 hover:bg-red-950/20">
                     <LogOut className="size-4" />
                   </button>

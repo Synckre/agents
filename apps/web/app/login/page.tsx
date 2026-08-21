@@ -1,74 +1,186 @@
 'use client';
 
 import React, { useState } from 'react';
-import { useSignIn } from '@clerk/nextjs';
+import { useSignIn, useSignUp } from '@clerk/nextjs';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { ShieldAlert, Mail, Lock, ArrowRight } from 'lucide-react';
+import { ShieldAlert, Mail, Lock, ArrowRight, Eye, EyeOff, User, CheckCircle2 } from 'lucide-react';
+
+const inputClass =
+  'bg-zinc-950 border-zinc-800 text-zinc-100 placeholder-zinc-500 text-sm h-11 focus:border-zinc-700';
 
 function messageFromClerk(err: unknown): string {
-  const clerkErr = err as { errors?: { longMessage?: string; message?: string; code?: string }[]; message?: string };
+  const clerkErr = err as { errors?: { longMessage?: string; message?: string }[]; message?: string };
   const raw =
     clerkErr?.errors?.[0]?.longMessage ||
     clerkErr?.errors?.[0]?.message ||
     clerkErr?.message ||
     '';
-  if (/oauth_google|allowed values|strategy/i.test(raw)) {
-    return 'Google no está habilitado en Clerk. En dashboard.clerk.com → Configure → SSO connections, activa Google y añade las URLs de control-ai.synckre.com.';
-  }
   if (/password is incorrect/i.test(raw)) {
     return 'Contraseña incorrecta. Prueba de nuevo.';
+  }
+  if (/couldn't find your account|identifier|not found/i.test(raw)) {
+    return 'No encontramos esa cuenta. Revisa el correo o crea una.';
+  }
+  if (/already exists|taken/i.test(raw)) {
+    return 'Ese correo ya tiene cuenta. Inicia sesión.';
   }
   return raw || 'Error de autenticación.';
 }
 
+function PasswordField({
+  id,
+  autoComplete,
+  value,
+  onChange,
+  showPassword,
+  onToggle,
+}: {
+  id: string;
+  autoComplete: string;
+  value: string;
+  onChange: (v: string) => void;
+  showPassword: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <div className="relative">
+      <Input
+        id={id}
+        name="password"
+        type={showPassword ? 'text' : 'password'}
+        autoComplete={autoComplete}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder="••••••••••••"
+        required
+        minLength={8}
+        className={`${inputClass} pr-11`}
+      />
+      <button
+        type="button"
+        onClick={onToggle}
+        className="absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-md text-zinc-500 hover:text-zinc-200"
+        aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+        title={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+      >
+        {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+      </button>
+    </div>
+  );
+}
+
 export default function LoginPage() {
   const { isLoaded: isSignInLoaded, signIn, setActive: setSignInActive } = useSignIn();
+  const { isLoaded: isSignUpLoaded, signUp, setActive: setSignUpActive } = useSignUp();
+  const [mode, setMode] = useState<'signin' | 'signup'>('signin');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [firstName, setFirstName] = useState('');
+  const [lastName, setLastName] = useState('');
+  const [code, setCode] = useState('');
+  const [verifyingCode, setVerifyingCode] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const router = useRouter();
 
-  const handleGoogleAuth = async () => {
-    if (!isSignInLoaded || !signIn) return;
-    try {
-      setLoading(true);
-      setError('');
-      const origin = window.location.origin;
-      await signIn.authenticateWithRedirect({
-        strategy: 'oauth_google',
-        redirectUrl: `${origin}/sso-callback`,
-        redirectUrlComplete: `${origin}/dashboard`,
-      });
-    } catch (err: unknown) {
-      console.error(err);
-      setError(messageFromClerk(err));
-      setLoading(false);
-    }
+  const switchMode = (next: 'signin' | 'signup') => {
+    setMode(next);
+    setError('');
+    setVerifyingCode(false);
+    setCode('');
+    setShowPassword(false);
   };
 
-  const handleSignInSubmit = async (e: React.FormEvent) => {
+  const handleSignInSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
-    if (!isSignInLoaded || loading) return;
+    if (!isSignInLoaded || !signIn || loading) return;
 
+    const data = new FormData(e.currentTarget);
+    const emailVal = String(data.get('identifier') || email).trim();
+    const passwordVal = String(data.get('password') || password);
+
+    if (!emailVal || !passwordVal) {
+      setError('Escribe el correo y la contraseña.');
+      return;
+    }
+
+    setEmail(emailVal);
+    setPassword(passwordVal);
     setLoading(true);
     setError('');
 
     try {
       const result = await signIn.create({
-        identifier: email.trim(),
-        password,
+        identifier: emailVal,
+        password: passwordVal,
       });
 
-      if (result.status === 'complete') {
+      if (result.status === 'complete' && result.createdSessionId) {
         await setSignInActive({ session: result.createdSessionId });
-        router.push('/dashboard');
+        router.replace('/dashboard');
+        return;
+      }
+
+      setError('No se pudo completar el inicio de sesión. Revisa tus credenciales.');
+    } catch (err: unknown) {
+      console.error(err);
+      setError(messageFromClerk(err));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSignUpSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
+    if (!isSignUpLoaded || !signUp || loading) return;
+
+    const data = new FormData(e.currentTarget);
+    const emailVal = String(data.get('email') || email).trim();
+    const passwordVal = String(data.get('password') || password);
+    const firstVal = String(data.get('firstName') || firstName).trim();
+    const lastVal = String(data.get('lastName') || lastName).trim();
+    const codeVal = String(data.get('code') || code).trim();
+
+    setLoading(true);
+    setError('');
+
+    try {
+      if (!verifyingCode) {
+        if (!emailVal || !passwordVal || !firstVal) {
+          setError('Completa nombre, correo y contraseña.');
+          setLoading(false);
+          return;
+        }
+        setEmail(emailVal);
+        setPassword(passwordVal);
+        setFirstName(firstVal);
+        setLastName(lastVal);
+
+        await signUp.create({
+          emailAddress: emailVal,
+          password: passwordVal,
+          firstName: firstVal,
+          lastName: lastVal,
+        });
+
+        await signUp.prepareEmailAddressVerification({ strategy: 'email_code' });
+        setVerifyingCode(true);
       } else {
-        setError('No se pudo completar el inicio de sesión. Revisa tus credenciales.');
+        const completeSignUp = await signUp.attemptEmailAddressVerification({
+          code: codeVal,
+        });
+
+        if (completeSignUp.status === 'complete' && completeSignUp.createdSessionId) {
+          await setSignUpActive({ session: completeSignUp.createdSessionId });
+          router.replace('/dashboard');
+          return;
+        }
+        setError('Código de verificación incorrecto.');
       }
     } catch (err: unknown) {
       console.error(err);
@@ -96,6 +208,23 @@ export default function LoginPage() {
           </div>
         </div>
 
+        <div className="grid grid-cols-2 p-1 bg-zinc-900 border border-zinc-800 rounded-xl text-sm font-medium text-zinc-400">
+          <button
+            type="button"
+            onClick={() => switchMode('signin')}
+            className={`py-2.5 rounded-lg transition-all ${mode === 'signin' ? 'bg-zinc-800 text-zinc-100 font-semibold shadow-sm' : 'hover:text-zinc-200'}`}
+          >
+            Iniciar Sesión
+          </button>
+          <button
+            type="button"
+            onClick={() => switchMode('signup')}
+            className={`py-2.5 rounded-lg transition-all ${mode === 'signup' ? 'bg-zinc-800 text-zinc-100 font-semibold shadow-sm' : 'hover:text-zinc-200'}`}
+          >
+            Crear Cuenta
+          </button>
+        </div>
+
         <Card className="border border-zinc-800 bg-zinc-900/90 shadow-2xl backdrop-blur-md">
           <CardContent className="p-6 space-y-5 pt-6">
             {error && (
@@ -105,84 +234,163 @@ export default function LoginPage() {
               </div>
             )}
 
-            <form onSubmit={handleSignInSubmit} className="space-y-4">
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-zinc-200 flex items-center gap-2">
-                  <Mail className="size-4 text-zinc-400" />
-                  Correo Electrónico
-                </label>
-                <Input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="usuario@synckre.com"
-                  required
-                  className="bg-zinc-950 border-zinc-800 text-zinc-100 placeholder-zinc-500 text-sm h-11 focus:border-zinc-700"
-                />
-              </div>
+            {mode === 'signin' ? (
+              <form onSubmit={handleSignInSubmit} className="space-y-4" autoComplete="on">
+                <div className="space-y-2">
+                  <label htmlFor="login-email" className="text-sm font-medium text-zinc-200 flex items-center gap-2">
+                    <Mail className="size-4 text-zinc-400" />
+                    Correo Electrónico
+                  </label>
+                  <Input
+                    id="login-email"
+                    name="identifier"
+                    type="email"
+                    autoComplete="username"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="usuario@synckre.com"
+                    required
+                    className={inputClass}
+                  />
+                </div>
 
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-zinc-200 flex items-center gap-2">
-                  <Lock className="size-4 text-zinc-400" />
-                  Contraseña
-                </label>
-                <Input
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="••••••••••••"
-                  required
-                  className="bg-zinc-950 border-zinc-800 text-zinc-100 placeholder-zinc-500 text-sm h-11 focus:border-zinc-700"
-                />
-              </div>
+                <div className="space-y-2">
+                  <label htmlFor="login-password" className="text-sm font-medium text-zinc-200 flex items-center gap-2">
+                    <Lock className="size-4 text-zinc-400" />
+                    Contraseña
+                  </label>
+                  <PasswordField
+                    id="login-password"
+                    autoComplete="current-password"
+                    value={password}
+                    onChange={setPassword}
+                    showPassword={showPassword}
+                    onToggle={() => setShowPassword((v) => !v)}
+                  />
+                </div>
 
-              <Button
-                type="submit"
-                disabled={loading || !email.trim() || !password}
-                className="w-full h-11 bg-zinc-100 hover:bg-zinc-200 text-zinc-950 text-sm font-semibold shadow-md gap-2 transition"
-              >
-                {loading ? 'Autenticando...' : <>Ingresar al Panel <ArrowRight className="size-4" /></>}
-              </Button>
-            </form>
+                <Button
+                  type="submit"
+                  disabled={loading || !isSignInLoaded}
+                  className="w-full h-11 bg-zinc-100 hover:bg-zinc-200 text-zinc-950 text-sm font-semibold shadow-md gap-2 transition"
+                >
+                  {loading ? 'Autenticando...' : <>Ingresar al Panel <ArrowRight className="size-4" /></>}
+                </Button>
+              </form>
+            ) : (
+              <form onSubmit={handleSignUpSubmit} className="space-y-4" autoComplete="on">
+                {!verifyingCode ? (
+                  <>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-2">
+                        <label htmlFor="signup-first" className="text-sm font-medium text-zinc-200 flex items-center gap-1.5">
+                          <User className="size-4 text-zinc-400" />
+                          Nombre
+                        </label>
+                        <Input
+                          id="signup-first"
+                          name="firstName"
+                          type="text"
+                          autoComplete="given-name"
+                          value={firstName}
+                          onChange={(e) => setFirstName(e.target.value)}
+                          placeholder="Juan"
+                          required
+                          className={inputClass}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label htmlFor="signup-last" className="text-sm font-medium text-zinc-200">
+                          Apellido
+                        </label>
+                        <Input
+                          id="signup-last"
+                          name="lastName"
+                          type="text"
+                          autoComplete="family-name"
+                          value={lastName}
+                          onChange={(e) => setLastName(e.target.value)}
+                          placeholder="Pérez"
+                          className={inputClass}
+                        />
+                      </div>
+                    </div>
 
-            <div className="relative flex items-center justify-center my-4">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-zinc-800" />
-              </div>
-              <div className="relative flex justify-center text-xs uppercase">
-                <span className="bg-zinc-900 px-3 text-zinc-500 font-mono tracking-wider">
-                  o ingresa con Google
-                </span>
-              </div>
-            </div>
+                    <div className="space-y-2">
+                      <label htmlFor="signup-email" className="text-sm font-medium text-zinc-200 flex items-center gap-2">
+                        <Mail className="size-4 text-zinc-400" />
+                        Correo Electrónico
+                      </label>
+                      <Input
+                        id="signup-email"
+                        name="email"
+                        type="email"
+                        autoComplete="email"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        placeholder="usuario@synckre.com"
+                        required
+                        className={inputClass}
+                      />
+                    </div>
 
-            <Button
-              type="button"
-              variant="outline"
-              onClick={handleGoogleAuth}
-              disabled={loading}
-              className="w-full h-11 bg-zinc-950 hover:bg-zinc-900 border-zinc-800 text-zinc-200 text-sm font-medium gap-3 transition"
-            >
-              <svg className="size-5 shrink-0" viewBox="0 0 24 24">
-                <path
-                  fill="#4285F4"
-                  d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17z"
-                />
-                <path
-                  fill="#34A853"
-                  d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.1-6.72-4.93H1.27v3.15C3.25 21.3 7.31 24 12 24z"
-                />
-                <path
-                  fill="#FBBC05"
-                  d="M5.28 14.27c-.25-.72-.38-1.49-.38-2.27s.13-1.55.38-2.27V6.58H1.27C.46 8.2.005 10.04.005 12s.455 3.8 1.265 5.42l4.01-3.15z"
-                />
-                <path
-                  fill="#EA4335"
-                  d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.94 1.19 15.23 0 12 0 7.31 0 3.25 2.7 1.27 6.58l4.01 3.15c.95-2.83 3.6-4.98 6.72-4.98z"
-                />
-              </svg>
-              Continuar con Google
-            </Button>
+                    <div className="space-y-2">
+                      <label htmlFor="signup-password" className="text-sm font-medium text-zinc-200 flex items-center gap-2">
+                        <Lock className="size-4 text-zinc-400" />
+                        Contraseña
+                      </label>
+                      <PasswordField
+                        id="signup-password"
+                        autoComplete="new-password"
+                        value={password}
+                        onChange={setPassword}
+                        showPassword={showPassword}
+                        onToggle={() => setShowPassword((v) => !v)}
+                      />
+                    </div>
+
+                    <Button
+                      type="submit"
+                      disabled={loading || !isSignUpLoaded}
+                      className="w-full h-11 bg-zinc-100 hover:bg-zinc-200 text-zinc-950 text-sm font-semibold shadow-md gap-2 transition"
+                    >
+                      {loading ? 'Creando cuenta...' : <>Crear Cuenta <ArrowRight className="size-4" /></>}
+                    </Button>
+                  </>
+                ) : (
+                  <div className="space-y-4">
+                    <div className="p-4 rounded-xl bg-emerald-950/40 border border-emerald-500/30 text-emerald-400 text-sm flex items-center gap-2.5">
+                      <CheckCircle2 className="size-5 shrink-0 text-emerald-400" />
+                      <span>Te enviamos un código de verificación a {email || 'tu correo'}.</span>
+                    </div>
+                    <div className="space-y-2">
+                      <label htmlFor="signup-code" className="text-sm font-medium text-zinc-200">
+                        Código de verificación
+                      </label>
+                      <Input
+                        id="signup-code"
+                        name="code"
+                        type="text"
+                        inputMode="numeric"
+                        autoComplete="one-time-code"
+                        value={code}
+                        onChange={(e) => setCode(e.target.value)}
+                        placeholder="123456"
+                        required
+                        className={`${inputClass} font-mono tracking-widest text-center`}
+                      />
+                    </div>
+                    <Button
+                      type="submit"
+                      disabled={loading || !isSignUpLoaded}
+                      className="w-full h-11 bg-zinc-100 hover:bg-zinc-200 text-zinc-950 text-sm font-semibold gap-2"
+                    >
+                      {loading ? 'Verificando...' : 'Verificar y entrar'}
+                    </Button>
+                  </div>
+                )}
+              </form>
+            )}
           </CardContent>
         </Card>
       </div>

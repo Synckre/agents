@@ -122,7 +122,7 @@ export function Sidebar() {
               <p className="text-[10px] text-muted-foreground truncate">Sesión Activa</p>
             </div>
           </div>
-          <SignOutButton>
+          <SignOutButton redirectUrl="/login">
             <button
               title="Cerrar Sesión"
               className="p-1.5 rounded-md hover:bg-red-950/30 text-muted-foreground hover:text-red-400 transition"
