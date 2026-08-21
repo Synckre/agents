@@ -49,7 +49,14 @@ export async function fetchApi(endpoint: string, options: RequestInit = {}) {
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({ detail: 'Error en la petición API' }));
-    throw new Error(errorData.detail || `Error HTTP ${response.status}`);
+    const detail = errorData.detail;
+    const message =
+      typeof detail === 'string'
+        ? detail
+        : Array.isArray(detail)
+          ? detail.map((d: { msg?: string }) => d?.msg).filter(Boolean).join(' ')
+          : `Error HTTP ${response.status}`;
+    throw new Error(message || `Error HTTP ${response.status}`);
   }
 
   return response.json();

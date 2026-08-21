@@ -68,6 +68,28 @@ class DatabaseManager:
             logger.info("Cerrando pool de PostgreSQL...")
             await self.pool.close()
 
+    async def fetch_all(self, sql: str, *args: Any) -> List[Dict[str, Any]]:
+        if not await self._ensure_connected():
+            return []
+        from psycopg.rows import dict_row
+
+        async with self.pool.connection() as conn:
+            async with conn.cursor(row_factory=dict_row) as cur:
+                await cur.execute(sql, args)
+                rows = await cur.fetchall()
+                return [dict(r) for r in rows]
+
+    async def fetch_one(self, sql: str, *args: Any) -> Optional[Dict[str, Any]]:
+        if not await self._ensure_connected():
+            return None
+        from psycopg.rows import dict_row
+
+        async with self.pool.connection() as conn:
+            async with conn.cursor(row_factory=dict_row) as cur:
+                await cur.execute(sql, args)
+                row = await cur.fetchone()
+                return dict(row) if row else None
+
     # ==========================================
     # CONVERSATIONS & MESSAGES
     # ==========================================

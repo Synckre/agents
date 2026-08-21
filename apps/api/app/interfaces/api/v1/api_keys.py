@@ -76,10 +76,14 @@ async def create_api_key(
     row = await db_manager.fetch_one(
         """
         INSERT INTO synckre.api_keys (id, name, key_hash, prefix, role, is_active)
-        VALUES ($1, $2, $3, $4, $5, TRUE)
+        VALUES (%s, %s, %s, %s, %s, TRUE)
         RETURNING id, name, prefix, role, is_active, created_at
         """,
-        key_id, req.name.strip(), key_hash, prefix, req.role
+        key_id,
+        req.name.strip(),
+        key_hash,
+        prefix,
+        req.role,
     )
 
     created_str = row["created_at"].isoformat() if row and row.get("created_at") else ""
@@ -103,10 +107,10 @@ async def revoke_api_key(
         """
         UPDATE synckre.api_keys
         SET is_active = FALSE
-        WHERE id = $1
+        WHERE id = %s
         RETURNING id
         """,
-        key_id
+        key_id,
     )
     if not row:
         raise HTTPException(

@@ -9,6 +9,22 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ShieldAlert, Mail, Lock, ArrowRight } from 'lucide-react';
 
+function messageFromClerk(err: unknown): string {
+  const clerkErr = err as { errors?: { longMessage?: string; message?: string; code?: string }[]; message?: string };
+  const raw =
+    clerkErr?.errors?.[0]?.longMessage ||
+    clerkErr?.errors?.[0]?.message ||
+    clerkErr?.message ||
+    '';
+  if (/oauth_google|allowed values|strategy/i.test(raw)) {
+    return 'Google no está habilitado en Clerk. En dashboard.clerk.com → Configure → SSO connections, activa Google y añade las URLs de control-ai.synckre.com.';
+  }
+  if (/password is incorrect/i.test(raw)) {
+    return 'Contraseña incorrecta. Prueba de nuevo.';
+  }
+  return raw || 'Error de autenticación.';
+}
+
 export default function LoginPage() {
   const { isLoaded: isSignInLoaded, signIn, setActive: setSignInActive } = useSignIn();
   const [email, setEmail] = useState('');
@@ -18,18 +34,19 @@ export default function LoginPage() {
   const router = useRouter();
 
   const handleGoogleAuth = async () => {
-    if (!isSignInLoaded) return;
+    if (!isSignInLoaded || !signIn) return;
     try {
       setLoading(true);
       setError('');
+      const origin = window.location.origin;
       await signIn.authenticateWithRedirect({
         strategy: 'oauth_google',
-        redirectUrl: '/sso-callback',
-        redirectUrlComplete: '/dashboard',
+        redirectUrl: `${origin}/sso-callback`,
+        redirectUrlComplete: `${origin}/dashboard`,
       });
     } catch (err: unknown) {
       console.error(err);
-      setError('Error al conectar con Google OAuth.');
+      setError(messageFromClerk(err));
       setLoading(false);
     }
   };
@@ -55,12 +72,7 @@ export default function LoginPage() {
       }
     } catch (err: unknown) {
       console.error(err);
-      const clerkErr = err as { errors?: { longMessage?: string; message?: string }[] };
-      const msg =
-        clerkErr?.errors?.[0]?.longMessage ||
-        clerkErr?.errors?.[0]?.message ||
-        'Error de autenticación. Verifica tu correo y contraseña.';
-      setError(msg);
+      setError(messageFromClerk(err));
     } finally {
       setLoading(false);
     }
