@@ -1,129 +1,187 @@
 """
-Autenticación y Autorización por Bearer JWT y x-api-key para Synckre Agent.
-Soporta dominios 'public', 'internal' y 'admin' con RBAC y aislamiento estricto.
+Auth del Agent Runtime.
+
+El Control Center se autentica con Clerk. Las rutas internas exigen un JWT
+de *nuestro* issuer (no cualquier tenant Clerk). Las rutas públicas
+(health, contacto, chat del sitio) no requieren sesión.
 """
 
-import hashlib
-import hmac
+from __future__ import annotations
+
+import base64
 import logging
-from typing import Literal, Optional
-from fastapi import Header, HTTPException, status
+from http.cookies import SimpleCookie
+from typing import Any, Dict, Literal, Optional
 import jwt
+from fastapi import Header, HTTPException, status
+from jwt import PyJWKClient
+
 from app.infrastructure.config import settings
-from app.infrastructure.db.manager import db_manager
 
 logger = logging.getLogger("security")
 
 DomainRole = Literal["public", "internal", "admin"]
 
+_jwks_clients: Dict[str, PyJWKClient] = {}
 
-def _matches(provided: str, expected: str) -> bool:
-    if not provided or not expected:
-        return False
-    return hmac.compare_digest(provided, expected)
+
+def _unauth() -> HTTPException:
+    return HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="No autenticado.")
+
+
+def _issuer_from_publishable_key(pk: str) -> str:
+    if not pk or not pk.startswith("pk_"):
+        return ""
+    parts = pk.split("_", 2)
+    if len(parts) < 3:
+        return ""
+    raw = parts[2]
+    pad = "=" * ((4 - len(raw) % 4) % 4)
+    try:
+        decoded = base64.urlsafe_b64decode(raw + pad).decode("utf-8")
+    except Exception:
+        return ""
+    domain = decoded.split("$", 1)[0].strip()
+    if not domain or "." not in domain:
+        return ""
+    return f"https://{domain}"
+
+
+def configured_clerk_issuers() -> list[str]:
+    issuers: list[str] = []
+    if (settings.CLERK_ISSUER or "").strip():
+        issuers.append(settings.CLERK_ISSUER.strip().rstrip("/"))
+    derived = _issuer_from_publishable_key(settings.CLERK_PUBLISHABLE_KEY or "")
+    if derived:
+        issuers.append(derived)
+    # únicos, orden estable
+    return list(dict.fromkeys(issuers))
+
+
+def _jwks_client(iss: str) -> PyJWKClient:
+    base = iss.rstrip("/")
+    client = _jwks_clients.get(base)
+    if client is None:
+        client = PyJWKClient(f"{base}/.well-known/jwks.json")
+        _jwks_clients[base] = client
+    return client
+
+
+def _token_from_headers(
+    authorization: Optional[str],
+    cookie_header: Optional[str],
+) -> Optional[str]:
+    if authorization and authorization.startswith("Bearer "):
+        token = authorization.split(" ", 1)[1].strip()
+        if token:
+            return token
+    if not cookie_header:
+        return None
+    parsed = SimpleCookie()
+    try:
+        parsed.load(cookie_header)
+    except Exception:
+        return None
+    morsel = parsed.get("__session")
+    if morsel and morsel.value:
+        return morsel.value.strip()
+    return None
+
+
+def _azp_allowed(azp: str, issuers: list[str]) -> bool:
+    if not azp:
+        return True
+    normalized = azp.rstrip("/")
+    allowed = set(settings.clerk_authorized_parties_list)
+    allowed.update(issuers)
+    return normalized in allowed
+
+
+def verify_clerk_token(token: str) -> Dict[str, Any]:
+    issuers = configured_clerk_issuers()
+    if not issuers:
+        logger.warning("Clerk issuer no configurado: se rechaza el token.")
+        raise _unauth()
+    try:
+        unverified = jwt.decode(token, options={"verify_signature": False, "verify_exp": False})
+        iss = str(unverified.get("iss") or "").rstrip("/")
+        if iss not in issuers:
+            raise _unauth()
+        signing_key = _jwks_client(iss).get_signing_key_from_jwt(token)
+        payload = jwt.decode(
+            token,
+            signing_key.key,
+            algorithms=["RS256"],
+            issuer=iss,
+        )
+    except HTTPException:
+        raise
+    except Exception:
+        raise _unauth()
+    if not payload.get("sub"):
+        raise _unauth()
+    azp = str(payload.get("azp") or "")
+    if not _azp_allowed(azp, issuers):
+        raise _unauth()
+    return payload
+
+
+async def require_authenticated_user(
+    authorization: Optional[str] = Header(default=None, alias="Authorization"),
+    cookie: Optional[str] = Header(default=None, alias="Cookie"),
+) -> Dict[str, Any]:
+    token = _token_from_headers(authorization, cookie)
+    if not token:
+        raise _unauth()
+    return verify_clerk_token(token)
 
 
 async def authenticate_request(
     authorization: Optional[str] = Header(default=None, alias="Authorization"),
+    cookie: Optional[str] = Header(default=None, alias="Cookie"),
     x_api_key: Optional[str] = Header(default=None, alias="x-api-key"),
 ) -> DomainRole:
-    """
-    Autentica la petición aceptando:
-    1. Authorization: Bearer <clerk_jwt_token> (para usuarios del Dashboard / Plataforma)
-    2. x-api-key: <clave_dinamica_bd> (para integraciones externas en synckre.api_keys)
-    3. Fallback a desarrollo o claves estáticas si están configuradas.
-    """
-    # 1. Bearer Token de Clerk (JWT o Session Token)
-    if authorization and authorization.startswith("Bearer "):
-        token = authorization.split(" ", 1)[1].strip()
-        if token:
-            try:
-                # Decodificar claims de Clerk JWT (si existe sub/sid)
-                payload = jwt.decode(token, options={"verify_signature": False})
-                if payload.get("sub") or payload.get("sid") or payload.get("iss"):
-                    return "admin"
-            except Exception as exc:
-                logger.warning(f"Fallo al decodificar Bearer JWT: {exc}")
-            # Si se pasa cualquier Bearer token desde el cliente web autenticado en desarrollo
-            return "admin"
-
-    # 2. API Key en Header (x-api-key)
-    if x_api_key:
-        # 2a. Claves estáticas opcionales de .env
-        if settings.ADMIN_API_KEY and _matches(x_api_key, settings.ADMIN_API_KEY):
-            return "admin"
-        if settings.INTERNAL_API_KEY and _matches(x_api_key, settings.INTERNAL_API_KEY):
-            return "internal"
-        if settings.PUBLIC_API_KEY and _matches(x_api_key, settings.PUBLIC_API_KEY):
-            return "public"
-
-        # 2b. Claves dinámicas almacenadas en la base de datos (synckre.api_keys)
-        try:
-            key_hash = hashlib.sha256(x_api_key.encode()).hexdigest()
-            row = await db_manager.fetch_one(
-                """
-                SELECT role, is_active, expires_at FROM synckre.api_keys
-                WHERE key_hash = $1 AND is_active = TRUE
-                  AND (expires_at IS NULL OR expires_at > NOW())
-                """,
-                key_hash,
-            )
-            if row and row.get("role"):
-                role = row["role"]
-                if role in ("admin", "internal", "public"):
-                    return role
-        except Exception as exc:
-            logger.warning(f"Error al verificar API key en BD: {exc}")
-
-    raise HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Credenciales de acceso inválidas. Requiere un Bearer token válido o Header 'x-api-key'.",
-    )
+    token = _token_from_headers(authorization, cookie)
+    if not token:
+        return "public"
+    verify_clerk_token(token)
+    return "admin"
 
 
 async def require_public_key(
-    domain: DomainRole = Depends(authenticate_request) if False else None,
     authorization: Optional[str] = Header(default=None, alias="Authorization"),
+    cookie: Optional[str] = Header(default=None, alias="Cookie"),
     x_api_key: Optional[str] = Header(default=None, alias="x-api-key"),
 ) -> DomainRole:
-    domain_role = await authenticate_request(authorization, x_api_key)
-    return domain_role
+    return await authenticate_request(authorization, cookie, x_api_key)
 
 
 async def require_internal_key(
     authorization: Optional[str] = Header(default=None, alias="Authorization"),
+    cookie: Optional[str] = Header(default=None, alias="Cookie"),
     x_api_key: Optional[str] = Header(default=None, alias="x-api-key"),
 ) -> DomainRole:
-    domain_role = await authenticate_request(authorization, x_api_key)
-    if domain_role in ("internal", "admin"):
-        return domain_role
-    raise HTTPException(
-        status_code=status.HTTP_403_FORBIDDEN,
-        detail="Acceso denegado: Se requiere nivel internal o admin.",
-    )
+    await require_authenticated_user(authorization, cookie)
+    return "admin"
 
 
 async def require_admin_key(
     authorization: Optional[str] = Header(default=None, alias="Authorization"),
+    cookie: Optional[str] = Header(default=None, alias="Cookie"),
     x_api_key: Optional[str] = Header(default=None, alias="x-api-key"),
 ) -> DomainRole:
-    domain_role = await authenticate_request(authorization, x_api_key)
-    if domain_role == "admin":
-        return "admin"
-    raise HTTPException(
-        status_code=status.HTTP_403_FORBIDDEN,
-        detail="Acceso denegado: Se requiere nivel admin.",
-    )
+    await require_authenticated_user(authorization, cookie)
+    return "admin"
 
 
 async def require_any_key(
     authorization: Optional[str] = Header(default=None, alias="Authorization"),
+    cookie: Optional[str] = Header(default=None, alias="Cookie"),
     x_api_key: Optional[str] = Header(default=None, alias="x-api-key"),
 ) -> DomainRole:
-    return await authenticate_request(authorization, x_api_key)
+    return await authenticate_request(authorization, cookie, x_api_key)
 
 
-# Roles de agente permitidos según el dominio de la key (evita escalada por body).
 PUBLIC_ALLOWED_ROLES = {"customer_support", "contact_form_agent"}
 ALL_ROLES = {
     "customer_support",
@@ -136,12 +194,8 @@ ALL_ROLES = {
 
 
 def resolve_allowed_role(domain: Optional[DomainRole], requested_role: Optional[str]) -> str:
-    """Resuelve el rol de agente a usar, limitado por el dominio de la API key.
-
-    public -> customer_support o contact_form_agent (por defecto contact_form_agent); internal/admin -> cualquier rol.
-    Nunca confía en un rol arbitrario del body sin un dominio autenticado.
-    """
-    role = (requested_role or "contact_form_agent").strip() or "contact_form_agent"
+    """Resuelve el rol de agente. Anónimos (public) solo formulario de contacto."""
     if domain == "public":
-        return role if role in PUBLIC_ALLOWED_ROLES else "contact_form_agent"
+        return "contact_form_agent"
+    role = (requested_role or "contact_form_agent").strip() or "contact_form_agent"
     return role if role in ALL_ROLES else "contact_form_agent"

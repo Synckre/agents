@@ -11,8 +11,7 @@ services:
       # Las NEXT_PUBLIC_* se hornean en el build (producción)
       args:
         NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
-        NEXT_PUBLIC_INTERNAL_API_KEY: ${INTERNAL_API_KEY:-}
-        NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:-pk_test_Y2xldmVyLWZpbmNoLTU1LmNsZXJrLmFjY291bnRzLmRldiQ}
+        NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY: ${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY}
     container_name: synckre_frontend
     restart: unless-stopped
     ports:
@@ -42,9 +41,9 @@ services:
       - POSTGRES_HOST=${POSTGRES_HOST:-postgres}
       - POSTGRES_PORT=${POSTGRES_PORT:-5432}
       - POSTGRES_DB=${POSTGRES_DB:-langgraph_db}
-      - PUBLIC_API_KEY=${PUBLIC_API_KEY:-synckre-pub-key-2026}
-      - INTERNAL_API_KEY=${INTERNAL_API_KEY:-synckre-int-key-2026}
-      - ADMIN_API_KEY=${ADMIN_API_KEY:-synckre-admin-key-2026}
+      - CLERK_ISSUER=${CLERK_ISSUER:-}
+      - CLERK_PUBLISHABLE_KEY=${NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY:-}
+      - CLERK_AUTHORIZED_PARTIES=${CLERK_AUTHORIZED_PARTIES:-https://control-ai.synckre.com,http://localhost:3000}
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000,http://localhost:8000,http://localhost:4321,http://127.0.0.1:4321,https://control-ai.synckre.com,https://www.synckre.com,https://synckre.com}
       - OLLAMA_BASE_URL=${OLLAMA_BASE_URL:-http://ollama:11434}
       - EMBEDDING_MODEL=${EMBEDDING_MODEL:-qwen3-embedding:0.6b}
@@ -71,8 +70,8 @@ services:
     image: pgvector/pgvector:pg16
     container_name: synckre_postgres
     restart: unless-stopped
-    ports:
-      - "5432:5432"
+    expose:
+      - "5432"
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-postgres}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
@@ -89,8 +88,8 @@ services:
     image: ollama/ollama:latest
     container_name: synckre_ollama
     restart: unless-stopped
-    ports:
-      - "11434:11434"
+    expose:
+      - "11434"
     volumes:
       - ollama_data:/root/.ollama
 

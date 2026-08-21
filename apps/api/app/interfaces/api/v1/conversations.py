@@ -19,6 +19,7 @@ from app.interfaces.limiter import limiter
 from app.interfaces.security import (
     DomainRole,
     require_any_key,
+    require_authenticated_user,
     require_internal_key,
     resolve_allowed_role,
 )
@@ -39,6 +40,8 @@ class UnifiedChatRequest(BaseModel):
 async def chat_direct(request: Request, req: UnifiedChatRequest, _domain: DomainRole = Depends(require_any_key)):
     conv_id = req.conversation_id
     active_role = resolve_allowed_role(_domain, req.role)
+    if _domain == "public":
+        active_role = "contact_form_agent"
 
     if conv_id:
         conv = await db_manager.get_conversation(conv_id)
@@ -70,13 +73,7 @@ async def chat_direct(request: Request, req: UnifiedChatRequest, _domain: Domain
 
 
 @router.get("/{id}/events", summary="Stream SSE del progreso de la ejecución del agente")
-async def conversation_events(id: str, key: str = ""):
-    # EventSource no puede mandar headers: la API key va como query param
-    from app.interfaces.security import resolve_domain
-
-    if not resolve_domain(key):
-        raise HTTPException(status_code=401, detail="API key inválida.")
-
+async def conversation_events(id: str, _user: dict = Depends(require_authenticated_user)):
     queue = event_bus.subscribe(id)
 
     async def generator():
@@ -117,7 +114,7 @@ class SendMessageRequest(BaseModel):
 
 @router.post("", summary="Crear o inicializar una Conversación")
 @limiter.limit("30/minute")
-async def create_conversation(request: Request, req: CreateConversationRequest, _domain: DomainRole = Depends(require_any_key)):
+async def create_conversation(request: Request, req: CreateConversationRequest, _domain: DomainRole = Depends(require_internal_key)):
     conv_id = f"CONV-{uuid.uuid4().hex[:8]}"
     conv = ConversationModel(
         id=conv_id,
@@ -159,15 +156,13 @@ async def delete_conversation(id: str):
 
 @router.post("/{id}/messages", summary="Enviar mensaje a una conversación e invocar AgentRuntime")
 @limiter.limit("30/minute")
-async def send_message(request: Request, id: str, req: SendMessageRequest, _domain: DomainRole = Depends(require_any_key)):
+async def send_message(request: Request, id: str, req: SendMessageRequest, _domain: DomainRole = Depends(require_internal_key)):
     conv = await db_manager.get_conversation(id)
     if not conv:
         raise HTTPException(status_code=404, detail=f"Conversación '{id}' no encontrada.")
 
-    # Modo operador humano: solo para claves de empleado/admin (internal o admin).
+    # Modo operador humano: solo con sesión Clerk.
     if req.as_human:
-        if _domain not in ("internal", "admin"):
-            raise HTTPException(status_code=403, detail="El modo operador humano requiere una clave de nivel internal o admin.")
         human_msg = MessageModel(
             id=f"MSG-{uuid.uuid4().hex[:8]}",
             conversation_id=id,

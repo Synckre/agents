@@ -26,16 +26,23 @@ const components: Components = {
   ),
   li: ({ children }) => <li className="my-0.5">{children}</li>,
   strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
-  a: ({ children, href }) => (
-    <a
-      href={href}
-      target="_blank"
-      rel="noopener noreferrer"
-      className="text-primary underline underline-offset-2"
-    >
-      {children}
-    </a>
-  ),
+  a: ({ children, href }) => {
+    const safe =
+      typeof href === "string" && /^(https?:|mailto:)/i.test(href) ? href : undefined;
+    if (!safe) {
+      return <span>{children}</span>;
+    }
+    return (
+      <a
+        href={safe}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="text-primary underline underline-offset-2"
+      >
+        {children}
+      </a>
+    );
+  },
   blockquote: ({ children }) => (
     <blockquote className="border-l-2 border-border pl-3 my-2 text-muted-foreground">
       {children}

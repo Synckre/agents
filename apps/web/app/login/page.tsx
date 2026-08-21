@@ -1,32 +1,22 @@
 'use client';
 
 import React, { useState } from 'react';
-import { useSignIn, useSignUp } from '@clerk/nextjs';
+import { useSignIn } from '@clerk/nextjs';
 import { useRouter } from 'next/navigation';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { ShieldAlert, Mail, Lock, ArrowRight, User, CheckCircle2 } from 'lucide-react';
+import { ShieldAlert, Mail, Lock, ArrowRight } from 'lucide-react';
 
 export default function LoginPage() {
   const { isLoaded: isSignInLoaded, signIn, setActive: setSignInActive } = useSignIn();
-  const { isLoaded: isSignUpLoaded, signUp, setActive: setSignUpActive } = useSignUp();
-  const [mode, setMode] = useState<'signin' | 'signup'>('signin');
-
-  // Form states
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName] = useState('');
-  const [verifyingCode, setVerifyingCode] = useState(false);
-  const [code, setCode] = useState('');
-
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const router = useRouter();
 
-  // 1-Click Google OAuth
   const handleGoogleAuth = async () => {
     if (!isSignInLoaded) return;
     try {
@@ -37,14 +27,13 @@ export default function LoginPage() {
         redirectUrl: '/sso-callback',
         redirectUrlComplete: '/dashboard',
       });
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
       setError('Error al conectar con Google OAuth.');
       setLoading(false);
     }
   };
 
-  // Handle Sign In Submission
   const handleSignInSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!isSignInLoaded || loading) return;
@@ -64,49 +53,13 @@ export default function LoginPage() {
       } else {
         setError('No se pudo completar el inicio de sesión. Revisa tus credenciales.');
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error(err);
-      const msg = err?.errors?.[0]?.longMessage || err?.errors?.[0]?.message || 'Error de autenticación. Verifica tu correo y contraseña.';
-      setError(msg);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Handle Sign Up Submission
-  const handleSignUpSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!isSignUpLoaded || loading) return;
-
-    setLoading(true);
-    setError('');
-
-    try {
-      if (!verifyingCode) {
-        await signUp.create({
-          emailAddress: email.trim(),
-          password,
-          firstName: firstName.trim(),
-          lastName: lastName.trim(),
-        });
-
-        await signUp.prepareEmailAddressVerification({ strategy: 'email_code' });
-        setVerifyingCode(true);
-      } else {
-        const completeSignUp = await signUp.attemptEmailAddressVerification({
-          code: code.trim(),
-        });
-
-        if (completeSignUp.status === 'complete') {
-          await setSignUpActive({ session: completeSignUp.createdSessionId });
-          router.push('/dashboard');
-        } else {
-          setError('Código de verificación incorrecto.');
-        }
-      }
-    } catch (err: any) {
-      console.error(err);
-      const msg = err?.errors?.[0]?.longMessage || err?.errors?.[0]?.message || 'Error al crear la cuenta. Revisa los datos ingresados.';
+      const clerkErr = err as { errors?: { longMessage?: string; message?: string }[] };
+      const msg =
+        clerkErr?.errors?.[0]?.longMessage ||
+        clerkErr?.errors?.[0]?.message ||
+        'Error de autenticación. Verifica tu correo y contraseña.';
       setError(msg);
     } finally {
       setLoading(false);
@@ -116,7 +69,6 @@ export default function LoginPage() {
   return (
     <div className="min-h-screen w-full flex items-center justify-center p-4 sm:p-6 bg-zinc-950 font-sans">
       <div className="w-full max-w-md space-y-6">
-        {/* Brand Logo & Title */}
         <div className="flex flex-col items-center text-center space-y-3">
           <div className="size-14 rounded-2xl bg-zinc-100 text-zinc-950 flex items-center justify-center font-bold text-2xl shadow-xl border border-zinc-200">
             S
@@ -128,29 +80,10 @@ export default function LoginPage() {
                 Enterprise
               </Badge>
             </h1>
-            <p className="text-sm text-zinc-400">Control Center · Plataforma de Agentes Autónomos</p>
+            <p className="text-sm text-zinc-400">Control Center · Acceso restringido</p>
           </div>
         </div>
 
-        {/* Mode Switcher Tabs */}
-        <div className="grid grid-cols-2 p-1 bg-zinc-900 border border-zinc-800 rounded-xl text-sm font-medium text-zinc-400">
-          <button
-            type="button"
-            onClick={() => { setMode('signin'); setError(''); }}
-            className={`py-2.5 rounded-lg transition-all ${mode === 'signin' ? 'bg-zinc-800 text-zinc-100 font-semibold shadow-sm' : 'hover:text-zinc-200'}`}
-          >
-            Iniciar Sesión
-          </button>
-          <button
-            type="button"
-            onClick={() => { setMode('signup'); setError(''); }}
-            className={`py-2.5 rounded-lg transition-all ${mode === 'signup' ? 'bg-zinc-800 text-zinc-100 font-semibold shadow-sm' : 'hover:text-zinc-200'}`}
-          >
-            Crear Cuenta
-          </button>
-        </div>
-
-        {/* shadcn Card Container */}
         <Card className="border border-zinc-800 bg-zinc-900/90 shadow-2xl backdrop-blur-md">
           <CardContent className="p-6 space-y-5 pt-6">
             {error && (
@@ -160,150 +93,46 @@ export default function LoginPage() {
               </div>
             )}
 
-            {/* Formulario Sign In */}
-            {mode === 'signin' ? (
-              <form onSubmit={handleSignInSubmit} className="space-y-4">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-zinc-200 flex items-center gap-2">
-                    <Mail className="size-4 text-zinc-400" />
-                    Correo Electrónico
-                  </label>
-                  <Input
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="usuario@synckre.com"
-                    required
-                    className="bg-zinc-950 border-zinc-800 text-zinc-100 placeholder-zinc-500 text-sm h-11 focus:border-zinc-700"
-                  />
-                </div>
+            <form onSubmit={handleSignInSubmit} className="space-y-4">
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-zinc-200 flex items-center gap-2">
+                  <Mail className="size-4 text-zinc-400" />
+                  Correo Electrónico
+                </label>
+                <Input
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="usuario@synckre.com"
+                  required
+                  className="bg-zinc-950 border-zinc-800 text-zinc-100 placeholder-zinc-500 text-sm h-11 focus:border-zinc-700"
+                />
+              </div>
 
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-zinc-200 flex items-center gap-2">
-                    <Lock className="size-4 text-zinc-400" />
-                    Contraseña
-                  </label>
-                  <Input
-                    type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="••••••••••••"
-                    required
-                    className="bg-zinc-950 border-zinc-800 text-zinc-100 placeholder-zinc-500 text-sm h-11 focus:border-zinc-700"
-                  />
-                </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-zinc-200 flex items-center gap-2">
+                  <Lock className="size-4 text-zinc-400" />
+                  Contraseña
+                </label>
+                <Input
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  placeholder="••••••••••••"
+                  required
+                  className="bg-zinc-950 border-zinc-800 text-zinc-100 placeholder-zinc-500 text-sm h-11 focus:border-zinc-700"
+                />
+              </div>
 
-                <Button
-                  type="submit"
-                  disabled={loading || !email.trim() || !password}
-                  className="w-full h-11 bg-zinc-100 hover:bg-zinc-200 text-zinc-950 text-sm font-semibold shadow-md gap-2 transition"
-                >
-                  {loading ? 'Autenticando...' : <>Ingresar al Panel <ArrowRight className="size-4" /></>}
-                </Button>
-              </form>
-            ) : (
-              /* Formulario Sign Up */
-              <form onSubmit={handleSignUpSubmit} className="space-y-4">
-                {!verifyingCode ? (
-                  <>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="space-y-2">
-                        <label className="text-sm font-medium text-zinc-200 flex items-center gap-1.5">
-                          <User className="size-4 text-zinc-400" />
-                          Nombre
-                        </label>
-                        <Input
-                          type="text"
-                          value={firstName}
-                          onChange={(e) => setFirstName(e.target.value)}
-                          placeholder="Juan"
-                          required
-                          className="bg-zinc-950 border-zinc-800 text-zinc-100 placeholder-zinc-500 text-sm h-11"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <label className="text-sm font-medium text-zinc-200">Apellido</label>
-                        <Input
-                          type="text"
-                          value={lastName}
-                          onChange={(e) => setLastName(e.target.value)}
-                          placeholder="Pérez"
-                          required
-                          className="bg-zinc-950 border-zinc-800 text-zinc-100 placeholder-zinc-500 text-sm h-11"
-                        />
-                      </div>
-                    </div>
+              <Button
+                type="submit"
+                disabled={loading || !email.trim() || !password}
+                className="w-full h-11 bg-zinc-100 hover:bg-zinc-200 text-zinc-950 text-sm font-semibold shadow-md gap-2 transition"
+              >
+                {loading ? 'Autenticando...' : <>Ingresar al Panel <ArrowRight className="size-4" /></>}
+              </Button>
+            </form>
 
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium text-zinc-200 flex items-center gap-2">
-                        <Mail className="size-4 text-zinc-400" />
-                        Correo Electrónico
-                      </label>
-                      <Input
-                        type="email"
-                        value={email}
-                        onChange={(e) => setEmail(e.target.value)}
-                        placeholder="usuario@synckre.com"
-                        required
-                        className="bg-zinc-950 border-zinc-800 text-zinc-100 placeholder-zinc-500 text-sm h-11"
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium text-zinc-200 flex items-center gap-2">
-                        <Lock className="size-4 text-zinc-400" />
-                        Contraseña
-                      </label>
-                      <Input
-                        type="password"
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        placeholder="••••••••••••"
-                        required
-                        className="bg-zinc-950 border-zinc-800 text-zinc-100 placeholder-zinc-500 text-sm h-11"
-                      />
-                    </div>
-
-                    <Button
-                      type="submit"
-                      disabled={loading || !email.trim() || !password || !firstName.trim()}
-                      className="w-full h-11 bg-zinc-100 hover:bg-zinc-200 text-zinc-950 text-sm font-semibold shadow-md gap-2 transition"
-                    >
-                      {loading ? 'Creando Cuenta...' : <>Crear Cuenta <ArrowRight className="size-4" /></>}
-                    </Button>
-                  </>
-                ) : (
-                  <div className="space-y-4">
-                    <div className="p-4 rounded-xl bg-emerald-950/40 border border-emerald-500/30 text-emerald-400 text-sm flex items-center gap-2.5">
-                      <CheckCircle2 className="size-5 shrink-0 text-emerald-400" />
-                      <span>Te enviamos un código de verificación a tu correo.</span>
-                    </div>
-
-                    <div className="space-y-2">
-                      <label className="text-sm font-medium text-zinc-200">Código de Verificación (6 dígitos)</label>
-                      <Input
-                        type="text"
-                        value={code}
-                        onChange={(e) => setCode(e.target.value)}
-                        placeholder="123456"
-                        required
-                        className="bg-zinc-950 border-zinc-800 text-zinc-100 text-sm h-11 font-mono tracking-widest text-center"
-                      />
-                    </div>
-
-                    <Button
-                      type="submit"
-                      disabled={loading || !code.trim()}
-                      className="w-full h-11 bg-zinc-100 hover:bg-zinc-200 text-zinc-950 text-sm font-semibold gap-2"
-                    >
-                      {loading ? 'Verificando...' : 'Verificar y Entrar'}
-                    </Button>
-                  </div>
-                )}
-              </form>
-            )}
-
-            {/* Separador Centrado */}
             <div className="relative flex items-center justify-center my-4">
               <div className="absolute inset-0 flex items-center">
                 <div className="w-full border-t border-zinc-800" />
@@ -315,7 +144,6 @@ export default function LoginPage() {
               </div>
             </div>
 
-            {/* Google OAuth Button (Abajo) */}
             <Button
               type="button"
               variant="outline"

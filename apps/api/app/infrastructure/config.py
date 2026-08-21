@@ -38,27 +38,16 @@ class Settings(BaseSettings):
 
     ENV: str = os.getenv("ENV", "dev")
 
-    # Security Keys
-    # Sin defaults funcionales en producción: si no llegan por env, el acceso se niega.
-    # En ENV=dev se usan valores de conveniencia para no romper el desarrollo local.
-    _DEFAULT_KEYS_DEV = {
-        "public": "synckre-pub-key-2026",
-        "internal": "synckre-int-key-2026",
-        "admin": "synckre-admin-key-2026",
-    }
-    PUBLIC_API_KEY: str = os.getenv(
-        "PUBLIC_API_KEY",
-        _DEFAULT_KEYS_DEV["public"] if os.getenv("ENV", "dev") == "dev" else "",
+    # Clerk — issuer fijado (no se acepta cualquier tenant).
+    CLERK_ISSUER: str = os.getenv("CLERK_ISSUER", "")
+    CLERK_PUBLISHABLE_KEY: str = os.getenv(
+        "CLERK_PUBLISHABLE_KEY",
+        os.getenv("NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY", ""),
     )
-    INTERNAL_API_KEY: str = os.getenv(
-        "INTERNAL_API_KEY",
-        _DEFAULT_KEYS_DEV["internal"] if os.getenv("ENV", "dev") == "dev" else "",
+    CLERK_AUTHORIZED_PARTIES: str = os.getenv(
+        "CLERK_AUTHORIZED_PARTIES",
+        "https://control-ai.synckre.com,http://localhost:3000,http://127.0.0.1:3000",
     )
-    ADMIN_API_KEY: str = os.getenv(
-        "ADMIN_API_KEY",
-        _DEFAULT_KEYS_DEV["admin"] if os.getenv("ENV", "dev") == "dev" else "",
-    )
-    API_KEY_HEADER_NAME: str = "x-api-key"
 
     # CORS — localhost + Control Center de producción.
     # También se aceptan orígenes https://*.synckre.com vía regex en main.py.
@@ -129,6 +118,14 @@ class Settings(BaseSettings):
     @property
     def allowed_origins_list(self) -> List[str]:
         return [origin.strip() for origin in self.ALLOWED_ORIGINS.split(",") if origin.strip()]
+
+    @property
+    def clerk_authorized_parties_list(self) -> List[str]:
+        return [p.strip().rstrip("/") for p in self.CLERK_AUTHORIZED_PARTIES.split(",") if p.strip()]
+
+    @property
+    def is_production(self) -> bool:
+        return (self.ENV or "").strip().lower() in {"prod", "production"}
 
     @model_validator(mode="after")
     def _validate_deepseek_api_key(self):

@@ -19,11 +19,6 @@ export function getApiBase(): string {
 /** En el navegador es always same-origin; en servidor apunta al backend. */
 export const API_BASE = getApiBase();
 
-/** Devuelve opcionalmente una API key si existe (para compatibilidad). */
-export function getApiKey(): string {
-  return process.env.NEXT_PUBLIC_INTERNAL_API_KEY || '';
-}
-
 export async function fetchApi(endpoint: string, options: RequestInit = {}) {
   const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData;
 
@@ -31,26 +26,16 @@ export async function fetchApi(endpoint: string, options: RequestInit = {}) {
     ...(options.headers || {}),
   } as Record<string, string>;
 
-  // Si se está ejecutando en el navegador y no hay header de autorización, intentar obtener el token de Clerk de las cookies/window
   if (!headers['Authorization'] && typeof window !== 'undefined') {
     try {
-      const clerkToken = (window as any).Clerk?.session?.getToken
-        ? await (window as any).Clerk.session.getToken()
-        : null;
-      if (clerkToken) {
-        headers['Authorization'] = `Bearer ${clerkToken}`;
-      } else {
-        // En entorno local/desarrollo pasar Bearer por defecto si hay usuario autenticado
-        headers['Authorization'] = `Bearer synckre_session_active`;
+      const clerk = (window as unknown as { Clerk?: { session?: { getToken?: () => Promise<string | null> } } }).Clerk;
+      const token = clerk?.session?.getToken ? await clerk.session.getToken() : null;
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
       }
     } catch {
-      headers['Authorization'] = `Bearer synckre_session_active`;
+      // Sin sesión Clerk: las rutas protegidas responderán 401
     }
-  }
-
-  const apiKey = getApiKey();
-  if (apiKey && !headers['x-api-key'] && !headers['Authorization']) {
-    headers['x-api-key'] = apiKey;
   }
 
   if (!isFormData && !headers['Content-Type']) {

@@ -1,20 +1,38 @@
 import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
+import { NextResponse } from 'next/server';
 
-const isPublicRoute = createRouteMatcher([
+const isPublicPage = createRouteMatcher([
   '/login(.*)',
   '/sign-in(.*)',
-  '/sign-up(.*)',
   '/sso-callback(.*)',
-  '/api/v1(.*)',
+]);
+
+const isPublicApi = createRouteMatcher([
+  '/api/v1/health(.*)',
+  '/api/v1/live(.*)',
+  '/api/v1/public/contact(.*)',
+  '/api/v1/conversations/chat(.*)',
   '/api/auth/(.*)',
 ]);
 
+const isApiRoute = createRouteMatcher(['/api(.*)']);
+
 export default clerkMiddleware(async (auth, req) => {
-  if (!isPublicRoute(req)) {
-    await auth.protect({
-      unauthenticatedUrl: new URL('/login', req.url).toString(),
-    });
+  if (isPublicApi(req) || isPublicPage(req)) {
+    return;
   }
+
+  if (isApiRoute(req)) {
+    const { userId } = await auth();
+    if (!userId) {
+      return NextResponse.json({ detail: 'No autenticado.' }, { status: 401 });
+    }
+    return;
+  }
+
+  await auth.protect({
+    unauthenticatedUrl: new URL('/login', req.url).toString(),
+  });
 });
 
 export const config = {

@@ -25,11 +25,10 @@ export default function RootLayout({
 }: Readonly<{
   children: React.ReactNode
 }>) {
-  const clerkPubKey =
-    process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY &&
-    process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY.startsWith("pk_")
-      ? process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
-      : "pk_test_Y2xldmVyLWZpbmNoLTU1LmNsZXJrLmFjY291bnRzLmRldiQ";
+  const clerkPubKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY || "";
+  if (!clerkPubKey.startsWith("pk_")) {
+    throw new Error("Falta NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY (debe empezar por pk_).");
+  }
 
   return (
     <ClerkProvider

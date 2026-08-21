@@ -1,8 +1,9 @@
 from typing import Optional
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 from app.infrastructure.db.manager import db_manager
-from app.interfaces.security import require_any_key, require_internal_key
+from app.interfaces.limiter import limiter
+from app.interfaces.security import require_internal_key
 from app.application.tools.crm_tools import guardar_lead
 
 router = APIRouter(tags=["Business Entities"])
@@ -17,8 +18,9 @@ class PublicContactRequest(BaseModel):
     message: str
 
 
-@router.post("/api/v1/public/contact", summary="Recibir mensaje de contacto público desde el sitio web", dependencies=[Depends(require_any_key)])
-async def public_contact(req: PublicContactRequest):
+@router.post("/api/v1/public/contact", summary="Recibir mensaje de contacto público desde el sitio web")
+@limiter.limit("20/minute")
+async def public_contact(request: Request, req: PublicContactRequest):
     if not req.name.strip() or not req.email.strip() or not req.message.strip():
         raise HTTPException(status_code=400, detail="Los campos 'name', 'email' y 'message' son obligatorios.")
 

@@ -62,6 +62,8 @@ async def lifespan(app: FastAPI):
     await erpnext_client.aclose()
 
 
+_hide_docs = settings.is_production
+
 app = FastAPI(
     title="Synckre Agent — Enterprise Agent Runtime",
     description=(
@@ -70,6 +72,9 @@ app = FastAPI(
     ),
     version="2.0.0",
     lifespan=lifespan,
+    docs_url=None if _hide_docs else "/docs",
+    redoc_url=None if _hide_docs else "/redoc",
+    openapi_url=None if _hide_docs else "/openapi.json",
 )
 
 app.state.limiter = limiter

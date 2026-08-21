@@ -1,8 +1,7 @@
 # Synckre Web — build de PRODUCCIÓN (para Coolify / despliegue real).
 # Las NEXT_PUBLIC_* se resuelven en BUILD (se hornean en el bundle):
-#   - NEXT_PUBLIC_API_URL (URL pública de la API, ej. https://api.dominio.com)
-#   - NEXT_PUBLIC_INTERNAL_API_KEY (la key interna del backend)
-# En runtime se necesita API_URL (URL interna del backend para el route handler de login).
+#   - NEXT_PUBLIC_API_URL (opcional; el navegador usa same-origin /api/v1)
+# En runtime se necesita API_URL (URL del backend FastAPI para el proxy).
 
 FROM node:20-alpine AS deps
 RUN npm install -g pnpm
@@ -17,10 +16,8 @@ COPY --from=deps /app/node_modules ./node_modules
 COPY apps/web ./
 ENV NEXT_TELEMETRY_DISABLED 1
 ARG NEXT_PUBLIC_API_URL
-ARG NEXT_PUBLIC_INTERNAL_API_KEY
 ARG NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL \
-    NEXT_PUBLIC_INTERNAL_API_KEY=$NEXT_PUBLIC_INTERNAL_API_KEY \
     NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY=$NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
 RUN pnpm build
 

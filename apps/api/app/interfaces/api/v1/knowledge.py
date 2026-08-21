@@ -14,11 +14,15 @@ from pydantic import BaseModel
 from app.infrastructure.db.manager import db_manager
 from app.infrastructure.rag.service import knowledge_service
 from app.interfaces.limiter import limiter
-from app.interfaces.security import require_admin_key, require_internal_key
+from app.interfaces.security import require_authenticated_user
 
 logger = logging.getLogger("knowledge_api")
 
-router = APIRouter(prefix="/api/v1/knowledge", tags=["Knowledge / RAG"])
+router = APIRouter(
+    prefix="/api/v1/knowledge",
+    tags=["Knowledge / RAG"],
+    dependencies=[Depends(require_authenticated_user)],
+)
 
 # Dominios permitidos para ingesta (whitelist: evita inyectar a 'internal' u otros)
 ALLOWED_INGEST_DOMAINS = {"public", "internal", "faq", "customer", "services", "project", "department"}
@@ -118,7 +122,7 @@ async def _store_chunks(
     return {"status": "success", "chunk_count": len(chunks), "source_id": source_id}
 
 
-@router.get("", summary="Listar fuentes RAG", dependencies=[Depends(require_internal_key)])
+@router.get("", summary="Listar fuentes RAG")
 async def list_knowledge_sources():
     if not await db_manager._ensure_connected():
         return []
@@ -141,7 +145,7 @@ async def list_knowledge_sources():
             ]
 
 
-@router.post("", summary="Ingerir un documento de texto para RAG", dependencies=[Depends(require_admin_key)])
+@router.post("", summary="Ingerir un documento de texto para RAG")
 @limiter.limit("10/minute")
 async def ingest_document(request: Request, req: IngestDocumentRequest):
     result = await _store_chunks(
@@ -161,7 +165,7 @@ async def ingest_document(request: Request, req: IngestDocumentRequest):
     }
 
 
-@router.post("/upload", summary="Subir y vectorizar un PDF para RAG", dependencies=[Depends(require_admin_key)])
+@router.post("/upload", summary="Subir y vectorizar un PDF para RAG")
 @limiter.limit("10/minute")
 async def upload_pdf(
     request: Request,
@@ -171,12 +175,17 @@ async def upload_pdf(
 ):
     if not file.filename or not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Solo se permiten archivos PDF.")
-    if file.size is not None and file.size > 25 * 1024 * 1024:
+    max_bytes = 25 * 1024 * 1024
+    if file.size is not None and file.size > max_bytes:
         raise HTTPException(status_code=400, detail="El PDF excede el límite de 25 MB.")
 
-    file_bytes = await file.read()
+    file_bytes = await file.read(max_bytes + 1)
+    if len(file_bytes) > max_bytes:
+        raise HTTPException(status_code=400, detail="El PDF excede el límite de 25 MB.")
     if not file_bytes:
         raise HTTPException(status_code=400, detail="El archivo PDF está vacío.")
+    if not file_bytes.startswith(b"%PDF"):
+        raise HTTPException(status_code=400, detail="El archivo no es un PDF válido.")
 
     text = _extract_pdf_text(file_bytes)
     if not text:
