@@ -22,6 +22,9 @@ function messageFromClerk(err: unknown): string {
   if (/password is incorrect/i.test(raw)) {
     return 'Contraseña incorrecta. Prueba de nuevo.';
   }
+  if (/15 characters or more|at least 15/i.test(raw)) {
+    return 'Clerk sigue pidiendo 15 caracteres. Bájalo en dashboard.clerk.com → User & authentication → Password → Update password requirements → Minimum length: 8.';
+  }
   if (/couldn't find your account|identifier|not found/i.test(raw)) {
     return 'No encontramos esa cuenta. Revisa el correo o crea una.';
   }
@@ -47,28 +50,31 @@ function PasswordField({
   onToggle: () => void;
 }) {
   return (
-    <div className="relative">
-      <Input
-        id={id}
-        name="password"
-        type={showPassword ? 'text' : 'password'}
-        autoComplete={autoComplete}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder="••••••••••••"
-        required
-        minLength={8}
-        className={`${inputClass} pr-11`}
-      />
-      <button
-        type="button"
-        onClick={onToggle}
-        className="absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-md text-zinc-500 hover:text-zinc-200"
-        aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
-        title={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
-      >
-        {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
-      </button>
+    <div>
+      <div className="relative">
+        <Input
+          id={id}
+          name="password"
+          type={showPassword ? 'text' : 'password'}
+          autoComplete={autoComplete}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="••••••••••••"
+          required
+          minLength={8}
+          className={`${inputClass} pr-11`}
+        />
+        <button
+          type="button"
+          onClick={onToggle}
+          className="absolute right-2 top-1/2 -translate-y-1/2 p-2 rounded-md text-zinc-500 hover:text-zinc-200"
+          aria-label={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+          title={showPassword ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+        >
+          {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
+        </button>
+      </div>
+      <p className="mt-1 text-[11px] text-zinc-500">Mínimo 8 caracteres.</p>
     </div>
   );
 }
