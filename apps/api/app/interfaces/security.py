@@ -9,6 +9,7 @@ de *nuestro* issuer (no cualquier tenant Clerk). Las rutas públicas
 from __future__ import annotations
 
 import base64
+import hashlib
 import logging
 from http.cookies import SimpleCookie
 from typing import Any, Dict, Literal, Optional
@@ -17,6 +18,7 @@ from fastapi import Header, HTTPException, status
 from jwt import PyJWKClient
 
 from app.infrastructure.config import settings
+from app.infrastructure.db.manager import db_manager
 
 logger = logging.getLogger("security")
 
@@ -126,12 +128,43 @@ def verify_clerk_token(token: str) -> Dict[str, Any]:
     return payload
 
 
+def _api_key_from_bearer(authorization: Optional[str]) -> Optional[str]:
+    """Grafana/Prometheus suelen mandar la API key como Authorization: Bearer sk_..."""
+    if not authorization or not authorization.startswith("Bearer "):
+        return None
+    token = authorization.split(" ", 1)[1].strip()
+    if token.startswith("sk_"):
+        return token
+    return None
+
+
+def _presented_api_key(authorization: Optional[str], x_api_key: Optional[str]) -> Optional[str]:
+    raw = (x_api_key or "").strip() or _api_key_from_bearer(authorization)
+    return raw or None
+
+
+async def _api_key_is_active(raw_key: str) -> bool:
+    key = (raw_key or "").strip()
+    if not key:
+        return False
+    key_hash = hashlib.sha256(key.encode()).hexdigest()
+    row = await db_manager.fetch_one(
+        """
+        SELECT 1 AS ok FROM synckre.api_keys
+        WHERE key_hash = %s AND is_active = TRUE
+          AND (expires_at IS NULL OR expires_at > NOW())
+        """,
+        key_hash,
+    )
+    return bool(row)
+
+
 async def require_authenticated_user(
     authorization: Optional[str] = Header(default=None, alias="Authorization"),
     cookie: Optional[str] = Header(default=None, alias="Cookie"),
 ) -> Dict[str, Any]:
     token = _token_from_headers(authorization, cookie)
-    if not token:
+    if not token or token.startswith("sk_"):
         raise _unauth()
     return verify_clerk_token(token)
 
@@ -141,8 +174,11 @@ async def authenticate_request(
     cookie: Optional[str] = Header(default=None, alias="Cookie"),
     x_api_key: Optional[str] = Header(default=None, alias="x-api-key"),
 ) -> DomainRole:
+    presented = _presented_api_key(authorization, x_api_key)
+    if presented and await _api_key_is_active(presented):
+        return "admin"
     token = _token_from_headers(authorization, cookie)
-    if not token:
+    if not token or token.startswith("sk_"):
         return "public"
     verify_clerk_token(token)
     return "admin"
@@ -161,6 +197,11 @@ async def require_internal_key(
     cookie: Optional[str] = Header(default=None, alias="Cookie"),
     x_api_key: Optional[str] = Header(default=None, alias="x-api-key"),
 ) -> DomainRole:
+    presented = _presented_api_key(authorization, x_api_key)
+    if presented:
+        if await _api_key_is_active(presented):
+            return "admin"
+        raise _unauth()
     await require_authenticated_user(authorization, cookie)
     return "admin"
 
@@ -170,8 +211,7 @@ async def require_admin_key(
     cookie: Optional[str] = Header(default=None, alias="Cookie"),
     x_api_key: Optional[str] = Header(default=None, alias="x-api-key"),
 ) -> DomainRole:
-    await require_authenticated_user(authorization, cookie)
-    return "admin"
+    return await require_internal_key(authorization, cookie, x_api_key)
 
 
 async def require_any_key(

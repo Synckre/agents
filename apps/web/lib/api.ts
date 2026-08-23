@@ -134,10 +134,10 @@ export const api = {
 
   // API Keys
   listApiKeys: () => fetchApi('/api/v1/api-keys'),
-  createApiKey: (name: string, role = 'public') =>
+  createApiKey: (name: string) =>
     fetchApi('/api/v1/api-keys', {
       method: 'POST',
-      body: JSON.stringify({ name, role }),
+      body: JSON.stringify({ name }),
     }),
   revokeApiKey: (id: string) =>
     fetchApi(`/api/v1/api-keys/${id}`, { method: 'DELETE' }),

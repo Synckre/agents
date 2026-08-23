@@ -13,7 +13,6 @@ interface ApiKeyItem {
   id: string;
   name: string;
   prefix: string;
-  role: string;
   is_active: boolean;
   created_at: string;
   raw_key?: string;
@@ -52,7 +51,7 @@ export default function SettingsPage() {
     try {
       setCreating(true);
       setErrorMsg(null);
-      const res = await api.createApiKey(newKeyName.trim(), 'public');
+      const res = await api.createApiKey(newKeyName.trim());
       if (res?.raw_key) {
         setCreatedRawKey(res.raw_key);
       }
@@ -157,7 +156,9 @@ export default function SettingsPage() {
               </span>
               <div>
                 <CardTitle>Gestión de API Keys</CardTitle>
-                <CardDescription>Crea y administra claves de acceso para conectar aplicaciones externas.</CardDescription>
+                <CardDescription>
+                  Claves de integración. Grafana usa el header <span className="font-mono">x-api-key</span> o <span className="font-mono">Authorization: Bearer</span>.
+                </CardDescription>
               </div>
             </div>
           </CardHeader>
@@ -202,7 +203,7 @@ export default function SettingsPage() {
                 type="text"
                 value={newKeyName}
                 onChange={(e) => setNewKeyName(e.target.value)}
-                placeholder="Nombre de la integración (ej. Widget Web, CRM Externa, Bot WhatsApp)"
+                placeholder="Nombre (ej. Grafana, Prometheus, Widget Web)"
                 className="flex-1 bg-zinc-950 border border-zinc-800 text-zinc-100 placeholder-zinc-500 rounded-lg px-4 py-2 text-xs focus:outline-none focus:border-zinc-700"
                 required
               />
@@ -240,7 +241,7 @@ export default function SettingsPage() {
                         <td className="p-3 text-muted-foreground">{item.prefix}...</td>
                         <td className="p-3">
                           <Badge variant="outline" className="font-mono text-[10px] text-zinc-300 border-zinc-700">
-                            x-api-key dinámica
+                            x-api-key
                           </Badge>
                         </td>
                         <td className="p-3">

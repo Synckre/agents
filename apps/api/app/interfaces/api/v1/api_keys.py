@@ -18,14 +18,12 @@ router = APIRouter(prefix="/api/v1/api-keys", tags=["API Keys"])
 
 class CreateApiKeyRequest(BaseModel):
     name: str = Field(..., min_length=2, max_length=100, description="Nombre de la integración o aplicación externa")
-    role: str = Field(default="public", description="Rol de la API key (por defecto 'public' para integraciones externas)")
 
 
 class ApiKeyResponse(BaseModel):
     id: str
     name: str
     prefix: str
-    role: str
     is_active: bool
     created_at: str
     raw_key: Optional[str] = None  # Solo se retorna una vez al crear
@@ -35,7 +33,7 @@ class ApiKeyResponse(BaseModel):
 async def list_api_keys(domain: DomainRole = Depends(require_internal_key)):
     rows = await db_manager.fetch_all(
         """
-        SELECT id, name, prefix, role, is_active, created_at
+        SELECT id, name, prefix, is_active, created_at
         FROM synckre.api_keys
         ORDER BY created_at DESC
         """
@@ -48,7 +46,6 @@ async def list_api_keys(domain: DomainRole = Depends(require_internal_key)):
                 id=r["id"],
                 name=r["name"],
                 prefix=r["prefix"],
-                role=r["role"],
                 is_active=r["is_active"],
                 created_at=created_str,
             )
@@ -61,29 +58,22 @@ async def create_api_key(
     req: CreateApiKeyRequest,
     domain: DomainRole = Depends(require_internal_key)
 ):
-    if req.role not in ("public", "internal", "admin"):
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Rol inválido. Debe ser 'public', 'internal' o 'admin'."
-        )
-
     key_id = f"key_{uuid.uuid4().hex[:12]}"
     secret = secrets.token_urlsafe(32)
-    raw_key = f"sk_{req.role}_{secret}"
+    raw_key = f"sk_{secret}"
     prefix = raw_key[:10]
     key_hash = hashlib.sha256(raw_key.encode()).hexdigest()
 
     row = await db_manager.fetch_one(
         """
-        INSERT INTO synckre.api_keys (id, name, key_hash, prefix, role, is_active)
-        VALUES (%s, %s, %s, %s, %s, TRUE)
-        RETURNING id, name, prefix, role, is_active, created_at
+        INSERT INTO synckre.api_keys (id, name, key_hash, prefix, is_active)
+        VALUES (%s, %s, %s, %s, TRUE)
+        RETURNING id, name, prefix, is_active, created_at
         """,
         key_id,
         req.name.strip(),
         key_hash,
         prefix,
-        req.role,
     )
 
     created_str = row["created_at"].isoformat() if row and row.get("created_at") else ""
@@ -91,7 +81,6 @@ async def create_api_key(
         id=row["id"],
         name=row["name"],
         prefix=row["prefix"],
-        role=row["role"],
         is_active=row["is_active"],
         created_at=created_str,
         raw_key=raw_key,

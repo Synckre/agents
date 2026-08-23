@@ -12,6 +12,25 @@ import { ShieldAlert, Mail, Lock, ArrowRight, Eye, EyeOff, User, CheckCircle2 } 
 const inputClass =
   'bg-zinc-950 border-zinc-800 text-zinc-100 placeholder-zinc-500 text-sm h-11 focus:border-zinc-700';
 
+type EmailCodeFactor = {
+  strategy: 'email_code';
+  emailAddressId: string;
+};
+
+type SignInAttempt = {
+  status: string | null;
+  createdSessionId: string | null;
+  supportedFirstFactors?: Array<{ strategy: string; emailAddressId?: string }> | null;
+  supportedSecondFactors?: Array<{ strategy: string; emailAddressId?: string }> | null;
+};
+
+function findEmailCodeFactor(
+  factors: Array<{ strategy: string; emailAddressId?: string }> | null | undefined,
+): EmailCodeFactor | undefined {
+  const match = factors?.find((factor) => factor.strategy === 'email_code' && factor.emailAddressId);
+  return match as EmailCodeFactor | undefined;
+}
+
 function messageFromClerk(err: unknown): string {
   const clerkErr = err as { errors?: { longMessage?: string; message?: string }[]; message?: string };
   const raw =
@@ -27,6 +46,9 @@ function messageFromClerk(err: unknown): string {
   }
   if (/already exists|taken/i.test(raw)) {
     return 'Ese correo ya tiene cuenta. Inicia sesión.';
+  }
+  if (/incorrect|invalid|expired/i.test(raw) && /code|verif/i.test(raw)) {
+    return 'Código incorrecto o caducado. Solicita uno nuevo.';
   }
   return raw || 'Error de autenticación.';
 }
@@ -72,6 +94,76 @@ function PasswordField({
   );
 }
 
+function VerificationCodeStep({
+  email,
+  code,
+  onCodeChange,
+  loading,
+  disabled,
+  resending,
+  onResend,
+  onBack,
+}: {
+  email: string;
+  code: string;
+  onCodeChange: (value: string) => void;
+  loading: boolean;
+  disabled: boolean;
+  resending: boolean;
+  onResend: () => void;
+  onBack: () => void;
+}) {
+  return (
+    <div className="space-y-4">
+      <div className="p-4 rounded-xl bg-emerald-950/40 border border-emerald-500/30 text-emerald-400 text-sm flex items-center gap-2.5">
+        <CheckCircle2 className="size-5 shrink-0 text-emerald-400" />
+        <span>Te enviamos un código de verificación a {email || 'tu correo'}.</span>
+      </div>
+      <div className="space-y-2">
+        <label htmlFor="verification-code" className="text-sm font-medium text-zinc-200">
+          Código de verificación
+        </label>
+        <Input
+          id="verification-code"
+          name="code"
+          type="text"
+          inputMode="numeric"
+          autoComplete="one-time-code"
+          value={code}
+          onChange={(e) => onCodeChange(e.target.value)}
+          placeholder="123456"
+          required
+          className={`${inputClass} font-mono tracking-widest text-center`}
+        />
+      </div>
+      <Button
+        type="submit"
+        disabled={loading || disabled}
+        className="w-full h-11 bg-zinc-100 hover:bg-zinc-200 text-zinc-950 text-sm font-semibold gap-2"
+      >
+        {loading ? 'Verificando...' : 'Verificar y entrar'}
+      </Button>
+      <div className="flex items-center justify-between gap-3 text-sm">
+        <button
+          type="button"
+          onClick={onBack}
+          className="text-zinc-400 hover:text-zinc-200"
+        >
+          Volver
+        </button>
+        <button
+          type="button"
+          onClick={onResend}
+          disabled={resending || loading}
+          className="text-zinc-400 hover:text-zinc-200 disabled:opacity-50"
+        >
+          {resending ? 'Reenviando...' : 'Reenviar código'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function LoginPage() {
   const { isLoaded: isSignInLoaded, signIn, setActive: setSignInActive } = useSignIn();
   const { isLoaded: isSignUpLoaded, signUp, setActive: setSignUpActive } = useSignUp();
@@ -82,17 +174,79 @@ export default function LoginPage() {
   const [lastName, setLastName] = useState('');
   const [code, setCode] = useState('');
   const [verifyingCode, setVerifyingCode] = useState(false);
+  const [signInCodeKind, setSignInCodeKind] = useState<'first' | 'second' | null>(null);
+  const [signInEmailAddressId, setSignInEmailAddressId] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [resending, setResending] = useState(false);
   const router = useRouter();
+
+  const resetVerification = () => {
+    setVerifyingCode(false);
+    setCode('');
+    setSignInCodeKind(null);
+    setSignInEmailAddressId(null);
+  };
 
   const switchMode = (next: 'signin' | 'signup') => {
     setMode(next);
     setError('');
-    setVerifyingCode(false);
-    setCode('');
     setShowPassword(false);
+    resetVerification();
+  };
+
+  const activateSignInSession = async (sessionId: string | null | undefined) => {
+    if (!sessionId || !setSignInActive) {
+      setError('No se pudo crear la sesión.');
+      return false;
+    }
+    await setSignInActive({ session: sessionId });
+    router.replace('/dashboard');
+    return true;
+  };
+
+  const startSignInEmailCode = async (attempt: SignInAttempt) => {
+    const status = attempt.status;
+    const needsSecond =
+      status === 'needs_second_factor' || status === 'needs_client_trust';
+
+    if (needsSecond) {
+      const emailCodeFactor = findEmailCodeFactor(attempt.supportedSecondFactors);
+      if (!emailCodeFactor) {
+        setError('Tu cuenta pide un segundo factor que este formulario no soporta.');
+        return false;
+      }
+      await signIn!.prepareSecondFactor({
+        strategy: 'email_code',
+        emailAddressId: emailCodeFactor.emailAddressId,
+      });
+      setSignInEmailAddressId(emailCodeFactor.emailAddressId);
+      setSignInCodeKind('second');
+      setVerifyingCode(true);
+      setCode('');
+      return true;
+    }
+
+    if (status === 'needs_first_factor') {
+      const emailCodeFactor = findEmailCodeFactor(attempt.supportedFirstFactors);
+      if (!emailCodeFactor) {
+        setError('No se pudo completar el inicio de sesión. Revisa tus credenciales.');
+        return false;
+      }
+      await signIn!.prepareFirstFactor({
+        strategy: 'email_code',
+        emailAddressId: emailCodeFactor.emailAddressId,
+      });
+      setSignInEmailAddressId(emailCodeFactor.emailAddressId);
+      setSignInCodeKind('first');
+      setVerifyingCode(true);
+      setCode('');
+      return true;
+    }
+
+    setError(`No se pudo completar el inicio de sesión (estado: ${status}).`);
+    return false;
   };
 
   const handleSignInSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
@@ -100,37 +254,97 @@ export default function LoginPage() {
     if (!isSignInLoaded || !signIn || loading) return;
 
     const data = new FormData(e.currentTarget);
-    const emailVal = String(data.get('identifier') || email).trim();
-    const passwordVal = String(data.get('password') || password);
-
-    if (!emailVal || !passwordVal) {
-      setError('Escribe el correo y la contraseña.');
-      return;
-    }
-
-    setEmail(emailVal);
-    setPassword(passwordVal);
     setLoading(true);
     setError('');
 
     try {
+      if (verifyingCode) {
+        const codeVal = String(data.get('code') || code).trim();
+        if (!codeVal) {
+          setError('Escribe el código de verificación.');
+          setLoading(false);
+          return;
+        }
+
+        const result =
+          signInCodeKind === 'first'
+            ? await signIn.attemptFirstFactor({ strategy: 'email_code', code: codeVal })
+            : await signIn.attemptSecondFactor({ strategy: 'email_code', code: codeVal });
+
+        if (result.status === 'complete') {
+          await activateSignInSession(result.createdSessionId);
+          return;
+        }
+
+        setError('Código de verificación incorrecto.');
+        return;
+      }
+
+      const emailVal = String(data.get('identifier') || email).trim();
+      const passwordVal = String(data.get('password') || password);
+
+      if (!emailVal || !passwordVal) {
+        setError('Escribe el correo y la contraseña.');
+        return;
+      }
+
+      setEmail(emailVal);
+      setPassword(passwordVal);
+
       const result = await signIn.create({
         identifier: emailVal,
         password: passwordVal,
       });
 
       if (result.status === 'complete' && result.createdSessionId) {
-        await setSignInActive({ session: result.createdSessionId });
-        router.replace('/dashboard');
+        await activateSignInSession(result.createdSessionId);
         return;
       }
 
-      setError('No se pudo completar el inicio de sesión. Revisa tus credenciales.');
+      await startSignInEmailCode(result as SignInAttempt);
     } catch (err: unknown) {
       console.error(err);
       setError(messageFromClerk(err));
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleResendSignInCode = async () => {
+    if (!signIn || !signInEmailAddressId || resending || loading) return;
+    setResending(true);
+    setError('');
+    try {
+      if (signInCodeKind === 'first') {
+        await signIn.prepareFirstFactor({
+          strategy: 'email_code',
+          emailAddressId: signInEmailAddressId,
+        });
+      } else {
+        await signIn.prepareSecondFactor({
+          strategy: 'email_code',
+          emailAddressId: signInEmailAddressId,
+        });
+      }
+    } catch (err: unknown) {
+      console.error(err);
+      setError(messageFromClerk(err));
+    } finally {
+      setResending(false);
+    }
+  };
+
+  const handleResendSignUpCode = async () => {
+    if (!signUp || resending || loading) return;
+    setResending(true);
+    setError('');
+    try {
+      await signUp.prepareEmailAddressVerification({ strategy: 'email_code' });
+    } catch (err: unknown) {
+      console.error(err);
+      setError(messageFromClerk(err));
+    } finally {
+      setResending(false);
     }
   };
 
@@ -235,46 +449,64 @@ export default function LoginPage() {
 
             {mode === 'signin' ? (
               <form onSubmit={handleSignInSubmit} className="space-y-4" autoComplete="on">
-                <div className="space-y-2">
-                  <label htmlFor="login-email" className="text-sm font-medium text-zinc-200 flex items-center gap-2">
-                    <Mail className="size-4 text-zinc-400" />
-                    Correo Electrónico
-                  </label>
-                  <Input
-                    id="login-email"
-                    name="identifier"
-                    type="email"
-                    autoComplete="username"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="usuario@synckre.com"
-                    required
-                    className={inputClass}
-                  />
-                </div>
+                {!verifyingCode ? (
+                  <>
+                    <div className="space-y-2">
+                      <label htmlFor="login-email" className="text-sm font-medium text-zinc-200 flex items-center gap-2">
+                        <Mail className="size-4 text-zinc-400" />
+                        Correo Electrónico
+                      </label>
+                      <Input
+                        id="login-email"
+                        name="identifier"
+                        type="email"
+                        autoComplete="username"
+                        value={email}
+                        onChange={(e) => setEmail(e.target.value)}
+                        placeholder="usuario@synckre.com"
+                        required
+                        className={inputClass}
+                      />
+                    </div>
 
-                <div className="space-y-2">
-                  <label htmlFor="login-password" className="text-sm font-medium text-zinc-200 flex items-center gap-2">
-                    <Lock className="size-4 text-zinc-400" />
-                    Contraseña
-                  </label>
-                  <PasswordField
-                    id="login-password"
-                    autoComplete="current-password"
-                    value={password}
-                    onChange={setPassword}
-                    showPassword={showPassword}
-                    onToggle={() => setShowPassword((v) => !v)}
-                  />
-                </div>
+                    <div className="space-y-2">
+                      <label htmlFor="login-password" className="text-sm font-medium text-zinc-200 flex items-center gap-2">
+                        <Lock className="size-4 text-zinc-400" />
+                        Contraseña
+                      </label>
+                      <PasswordField
+                        id="login-password"
+                        autoComplete="current-password"
+                        value={password}
+                        onChange={setPassword}
+                        showPassword={showPassword}
+                        onToggle={() => setShowPassword((v) => !v)}
+                      />
+                    </div>
 
-                <Button
-                  type="submit"
-                  disabled={loading || !isSignInLoaded}
-                  className="w-full h-11 bg-zinc-100 hover:bg-zinc-200 text-zinc-950 text-sm font-semibold shadow-md gap-2 transition"
-                >
-                  {loading ? 'Autenticando...' : <>Ingresar al Panel <ArrowRight className="size-4" /></>}
-                </Button>
+                    <Button
+                      type="submit"
+                      disabled={loading || !isSignInLoaded}
+                      className="w-full h-11 bg-zinc-100 hover:bg-zinc-200 text-zinc-950 text-sm font-semibold shadow-md gap-2 transition"
+                    >
+                      {loading ? 'Autenticando...' : <>Ingresar al Panel <ArrowRight className="size-4" /></>}
+                    </Button>
+                  </>
+                ) : (
+                  <VerificationCodeStep
+                    email={email}
+                    code={code}
+                    onCodeChange={setCode}
+                    loading={loading}
+                    disabled={!isSignInLoaded}
+                    resending={resending}
+                    onResend={handleResendSignInCode}
+                    onBack={() => {
+                      resetVerification();
+                      setError('');
+                    }}
+                  />
+                )}
               </form>
             ) : (
               <form onSubmit={handleSignUpSubmit} className="space-y-4" autoComplete="on">
@@ -357,36 +589,19 @@ export default function LoginPage() {
                     </Button>
                   </>
                 ) : (
-                  <div className="space-y-4">
-                    <div className="p-4 rounded-xl bg-emerald-950/40 border border-emerald-500/30 text-emerald-400 text-sm flex items-center gap-2.5">
-                      <CheckCircle2 className="size-5 shrink-0 text-emerald-400" />
-                      <span>Te enviamos un código de verificación a {email || 'tu correo'}.</span>
-                    </div>
-                    <div className="space-y-2">
-                      <label htmlFor="signup-code" className="text-sm font-medium text-zinc-200">
-                        Código de verificación
-                      </label>
-                      <Input
-                        id="signup-code"
-                        name="code"
-                        type="text"
-                        inputMode="numeric"
-                        autoComplete="one-time-code"
-                        value={code}
-                        onChange={(e) => setCode(e.target.value)}
-                        placeholder="123456"
-                        required
-                        className={`${inputClass} font-mono tracking-widest text-center`}
-                      />
-                    </div>
-                    <Button
-                      type="submit"
-                      disabled={loading || !isSignUpLoaded}
-                      className="w-full h-11 bg-zinc-100 hover:bg-zinc-200 text-zinc-950 text-sm font-semibold gap-2"
-                    >
-                      {loading ? 'Verificando...' : 'Verificar y entrar'}
-                    </Button>
-                  </div>
+                  <VerificationCodeStep
+                    email={email}
+                    code={code}
+                    onCodeChange={setCode}
+                    loading={loading}
+                    disabled={!isSignUpLoaded}
+                    resending={resending}
+                    onResend={handleResendSignUpCode}
+                    onBack={() => {
+                      resetVerification();
+                      setError('');
+                    }}
+                  />
                 )}
               </form>
             )}

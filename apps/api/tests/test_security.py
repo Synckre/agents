@@ -82,3 +82,48 @@ def test_bogus_bearer_rejected():
         headers={"Authorization": "Bearer not-a-clerk-token"},
     )
     assert res.status_code == 401
+
+
+def test_analytics_metrics_requires_auth():
+    client = TestClient(app)
+    assert client.get("/api/v1/analytics/metrics").status_code == 401
+
+
+def test_analytics_metrics_rejects_unknown_api_key(monkeypatch):
+    async def missing(_sql, *_args):
+        return None
+
+    monkeypatch.setattr("app.interfaces.security.db_manager.fetch_one", missing)
+    client = TestClient(app)
+    res = client.get(
+        "/api/v1/analytics/metrics",
+        headers={"x-api-key": "sk_unknown"},
+    )
+    assert res.status_code == 401
+
+
+def test_analytics_metrics_accepts_active_x_api_key(monkeypatch):
+    async def active_row(_sql, *_args):
+        return {"ok": 1}
+
+    monkeypatch.setattr("app.interfaces.security.db_manager.fetch_one", active_row)
+    client = TestClient(app)
+    res = client.get(
+        "/api/v1/analytics/metrics",
+        headers={"x-api-key": "sk_grafana"},
+    )
+    assert res.status_code == 200
+    assert "synckre_tool_executions_total" in res.text
+
+
+def test_analytics_metrics_accepts_bearer_sk_key(monkeypatch):
+    async def active_row(_sql, *_args):
+        return {"ok": 1}
+
+    monkeypatch.setattr("app.interfaces.security.db_manager.fetch_one", active_row)
+    client = TestClient(app)
+    res = client.get(
+        "/api/v1/analytics/metrics",
+        headers={"Authorization": "Bearer sk_grafana"},
+    )
+    assert res.status_code == 200
