@@ -7,17 +7,22 @@ User -> API -> Conversation -> AgentRuntime -> Goal/Intent -> Role+Policy -> Mem
 Soporta el Agent Execution Loop con límites configurables (max_iterations, max_tool_calls, timeout).
 """
 
+import asyncio
 import json
 import logging
 import re
+import time
 import uuid
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
-import httpx
 
 from app.application.agent.memory import MemoryRetriever
 from app.application.agent.policies import PolicyEngine, GuardrailsEngine
+from app.application.agent.ports import LlmPort, LlmResult
+from app.application.agent.prompts import build_system_prompt
 from app.application.agent.roles import RoleModel, RoleSystem
+from app.application.agent.text import limpiar_texto_final
 from app.application.agent.tools_registry import tool_registry
 from app.application.services.event_bus import event_bus
 from app.application.services.memory_service import extraer_datos, memory_service
@@ -34,6 +39,98 @@ from app.domain import (
 )
 
 logger = logging.getLogger("agent_runtime")
+
+
+_pending_telemetry: set[asyncio.Task] = set()
+
+
+def _spawn_telemetry(coro) -> None:
+    """Persiste métricas fuera del camino de la respuesta al usuario."""
+    try:
+        task = asyncio.get_running_loop().create_task(coro)
+    except RuntimeError:
+        return
+    _pending_telemetry.add(task)
+    task.add_done_callback(_pending_telemetry.discard)
+
+
+async def _flush_run_telemetry(stats: "_RunStats") -> None:
+    try:
+        await db_manager.persist_run_telemetry(
+            run_id=stats.run_id,
+            conversation_id=stats.conversation_id,
+            role=stats.role,
+            channel=stats.channel,
+            outcome=stats.outcome,
+            llm_calls=stats.llm_calls,
+            llm_failures=stats.llm_failures,
+            llm_latency_ms=stats.llm_latency_ms,
+            used_fallback=stats.used_fallback,
+            tool_calls=stats.tool_calls,
+            used_rag=stats.used_rag,
+            rag_chunks=stats.rag_chunks,
+            policy_denied=stats.policy_denied,
+            duration_ms=stats.duration_ms,
+            prompt_tokens=stats.prompt_tokens,
+            completion_tokens=stats.completion_tokens,
+            llm_events=stats.llm_events,
+        )
+    except Exception:
+        logger.exception("Telemetría en segundo plano falló")
+
+
+@dataclass
+class _RunStats:
+    """Telemetría técnica de una pasada. Sin texto de usuario ni respuestas."""
+
+    run_id: str
+    conversation_id: str
+    role: str
+    channel: str = "api"
+    outcome: str = "success"
+    llm_calls: int = 0
+    llm_failures: int = 0
+    llm_latency_ms: int = 0
+    used_fallback: bool = False
+    tool_calls: int = 0
+    used_rag: bool = False
+    rag_chunks: int = 0
+    policy_denied: bool = False
+    duration_ms: int = 0
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    llm_events: list = field(default_factory=list)
+
+    def note_llm(
+        self,
+        *,
+        status: str,
+        latency_ms: int,
+        prompt: int = 0,
+        completion: int = 0,
+        phase: str = "plan",
+        http_status: Optional[int] = None,
+        attempt: int = 1,
+    ) -> None:
+        self.llm_calls += 1
+        self.llm_latency_ms += max(latency_ms, 0)
+        self.prompt_tokens += max(prompt, 0)
+        self.completion_tokens += max(completion, 0)
+        if status in ("error", "http_error", "timeout"):
+            self.llm_failures += 1
+        if status == "fallback":
+            self.used_fallback = True
+        self.llm_events.append(
+            {
+                "phase": phase,
+                "status": status,
+                "latency_ms": latency_ms,
+                "prompt_tokens": prompt,
+                "completion_tokens": completion,
+                "http_status": http_status,
+                "attempt": attempt,
+            }
+        )
 
 
 # Tools cuya respuesta ya es un mensaje listo para el usuario: no requieren la
@@ -56,31 +153,7 @@ _SIMPLE_CONFIRM_TOOLS = {
 }
 
 
-# Datos internos que NUNCA deben mostrarse al usuario (referencias de ERP/DB)
-_INTERNO_RE = re.compile(
-    r"\b(?:CRM-)?LEAD-\d+\b|\bEV\d+\b|ISS-\d+\b|"
-    r"\b(?:TSK|APP|TICK|CONV|SRC|ESC|MSG|TEX)-[A-Za-z0-9]+\b"
-)
 
-
-def redactar_datos_internos(texto: str, reemplazo: str = "") -> str:
-    """Elimina o enmascara referencias internas (LEAD-, EV000, ISS-, TSK-, CONV-, etc.)."""
-    if not texto:
-        return texto
-    return _INTERNO_RE.sub(reemplazo, texto)
-
-
-def _limpiar_texto_final(texto: str) -> str:
-    """Prepara la respuesta para el usuario: redacta internos y elimina frases de
-    referencia (p.ej. '🔖 Referencia: [referencia interna]') que no deben verse."""
-    texto = redactar_datos_internos(texto, reemplazo="")
-    # El LLM puede copiar el placeholder '[referencia interna]' del contexto de la tool
-    texto = texto.replace("[referencia interna]", "")
-    texto = texto.replace("🔖 Referencia:", "").replace("🔖Referencia:", "")
-    texto = re.sub(r"\s*Referencia:\s*", " ", texto)
-    texto = re.sub(r"\.\s+\.", ".", texto)
-    texto = re.sub(r"\s{2,}", " ", texto).strip()
-    return texto
 
 
 class AgentRuntimeResult:
@@ -116,9 +189,19 @@ class AgentRuntime:
         self,
         max_iterations: int = 5,
         max_tool_calls: int = 3,
+        llm: Optional[LlmPort] = None,
     ):
         self.max_iterations = max_iterations
         self.max_tool_calls = max_tool_calls
+        self._llm = llm
+
+    @property
+    def llm(self) -> LlmPort:
+        if self._llm is None:
+            from app.infrastructure.llm.deepseek import DeepseekLlm
+
+            self._llm = DeepseekLlm()
+        return self._llm
 
     async def execute(
         self,
@@ -128,6 +211,40 @@ class AgentRuntime:
         channel: str = "api",
         user_id: Optional[str] = None,
         customer_id: Optional[str] = None,
+    ) -> AgentRuntimeResult:
+        started = time.perf_counter()
+        stats = _RunStats(
+            run_id=f"RUN-{uuid.uuid4().hex[:12]}",
+            conversation_id=conversation_id,
+            role=role_name,
+            channel=channel or "api",
+        )
+        try:
+            return await self._run_turn(
+                conversation_id=conversation_id,
+                user_input=user_input,
+                role_name=role_name,
+                channel=channel,
+                user_id=user_id,
+                customer_id=customer_id,
+                stats=stats,
+            )
+        except Exception:
+            stats.outcome = "error"
+            raise
+        finally:
+            stats.duration_ms = int((time.perf_counter() - started) * 1000)
+            _spawn_telemetry(_flush_run_telemetry(stats))
+
+    async def _run_turn(
+        self,
+        conversation_id: str,
+        user_input: str,
+        role_name: str,
+        channel: str,
+        user_id: Optional[str],
+        customer_id: Optional[str],
+        stats: _RunStats,
     ) -> AgentRuntimeResult:
         """
         Ejecuta el ciclo principal del Agent Runtime V2.
@@ -157,6 +274,7 @@ class AgentRuntime:
         is_injection, guard_msg = GuardrailsEngine.detect_prompt_injection(user_input)
         if is_injection:
             logger.warning(f"Guardrails interceptó inyección de prompt en conv {conversation_id}: {guard_msg}")
+            stats.outcome = "guardrail_block"
             bot_msg = MessageModel(
                 id=f"MSG-{uuid.uuid4().hex[:8]}",
                 conversation_id=conversation_id,
@@ -200,6 +318,8 @@ class AgentRuntime:
             context=context,
             tools=authorized_tools,
             conversation_id=conversation_id,
+            stats=stats,
+            phase="plan",
         )
 
         # Evaluar si el modelo sugirió invocar una herramienta o crear una tarea
@@ -207,6 +327,10 @@ class AgentRuntime:
         tool_args = llm_response.get("tool_args", {})
         final_answer = llm_response.get("answer", "")
         transfer_target: Optional[str] = None  # rol al que se transfiere la conversación
+
+        if selected_tool_name and not PolicyEngine.is_tool_allowed(role, selected_tool_name):
+            stats.policy_denied = True
+            selected_tool_name = None
 
         if selected_tool_name and PolicyEngine.is_tool_allowed(role, selected_tool_name):
             tool_def = tool_registry.get_tool(selected_tool_name)
@@ -216,6 +340,7 @@ class AgentRuntime:
 
                 if needs_approval or tool_def.requires_approval:
                     requires_approval = True
+                    stats.outcome = "hitl"
                     # Crear Tarea en estado WAITING_HUMAN
                     task = TaskModel(
                         id=f"TSK-{uuid.uuid4().hex[:8]}",
@@ -252,7 +377,6 @@ class AgentRuntime:
                     await event_bus.publish(
                         conversation_id, {"type": "tool_started", "tool": selected_tool_name}
                     )
-                    import time
                     start_t = time.time()
                     # Sanitizar argumentos con Guardrails y vincular conversación
                     exec_args = GuardrailsEngine.sanitize_tool_input(selected_tool_name, dict(tool_args))
@@ -307,6 +431,7 @@ class AgentRuntime:
                         },
                     )
                     executed_tool_calls.append({"tool": selected_tool_name, "result": tool_result})
+                    stats.tool_calls += 1
 
                     # Registrar la ejecución física de la herramienta en la base de datos para analíticas
                     await db_manager.log_tool_execution(
@@ -332,8 +457,6 @@ class AgentRuntime:
                         action="tool_execution",
                         user_id=user_id,
                         tool_name=selected_tool_name,
-                        input_summary=json.dumps(tool_args)[:200],
-                        output_summary=json.dumps(tool_result)[:200],
                         authorization_result="success",
                     )
 
@@ -358,6 +481,8 @@ class AgentRuntime:
                                 authorized_tools,
                                 tool_result=tool_result,
                                 conversation_id=conversation_id,
+                                stats=stats,
+                                phase="synthesize",
                             )
                             respuesta_final = (llm_final or {}).get("answer") or ""
                             if respuesta_final:
@@ -405,6 +530,7 @@ class AgentRuntime:
                         # Pausar el agente: la conversación pasa a ser atendida por un humano.
                         # Los mensajes del cliente se registran pero el modelo deja de responder.
                         await db_manager.update_conversation_status(conversation_id, "paused_human")
+                        stats.outcome = "hitl"
 
                         base_msg = tool_result.get(
                             "message", "Tu solicitud ha sido escalada a un operador humano."
@@ -417,6 +543,8 @@ class AgentRuntime:
         # Traspaso entre agentes: continuar la conversación con el rol destino para que
         # el nuevo agente responda de inmediato (p.ej. ofrece horarios para la cita).
         if transfer_target and transfer_target != role.name:
+            stats.outcome = "transfer"
+            stats.role = transfer_target
             await db_manager.add_message(
                 MessageModel(
                     id=f"MSG-{uuid.uuid4().hex[:8]}",
@@ -433,6 +561,7 @@ class AgentRuntime:
                     nuevo_role=RoleSystem.get_role(transfer_target),
                     all_registered=all_registered,
                     context=context,
+                    stats=stats,
                 )
                 final_answer = continuacion
                 executed_tool_calls = executed_tool_calls + tools_continuacion
@@ -441,11 +570,13 @@ class AgentRuntime:
 
         # Registrar estadísticas de RAG si se recuperaron fragmentos de conocimiento
         if context and context.get("rag_context"):
+            stats.used_rag = True
+            stats.rag_chunks = len(context["rag_context"])
             await db_manager.log_tool_execution(
                 conversation_id=conversation_id,
                 tool_name="search_documents",
-                input_data={"query": user_input},
-                output_data={"results_count": len(context["rag_context"])},
+                input_data={"chunk_count": stats.rag_chunks},
+                output_data={"results_count": stats.rag_chunks},
                 status="success",
             )
 
@@ -454,7 +585,7 @@ class AgentRuntime:
 
         final_answer = self._normalizar_formato(final_answer)
         # Nunca exponer referencias internas al usuario (ni placeholders de referencia)
-        final_answer = _limpiar_texto_final(final_answer)
+        final_answer = limpiar_texto_final(final_answer)
 
         # 7. Guardar Mensaje del Asistente en DB
         agent_msg = MessageModel(
@@ -471,8 +602,6 @@ class AgentRuntime:
             agent_role=role.name,
             action="agent_execution",
             user_id=user_id,
-            input_summary=user_input[:200],
-            output_summary=final_answer[:200],
             authorization_result="approval_requested" if requires_approval else "authorized",
         )
 
@@ -496,155 +625,62 @@ class AgentRuntime:
         tools: List[Dict[str, Any]],
         tool_result: Optional[Dict[str, Any]] = None,
         conversation_id: Optional[str] = None,
+        stats: Optional[_RunStats] = None,
+        phase: str = "plan",
     ) -> Dict[str, Any]:
-        """
-        Interacción directa con DeepSeek API (`deepseek-v4-flash`).
-        Si `tool_result` se provee (segunda llamada), el modelo debe integrar
-        ese resultado en la respuesta final y NO seleccionar otra herramienta.
-        """
-        api_key = settings.DEEPSEEK_API_KEY
-        if not api_key or api_key == "your_deepseek_api_key_here" or settings.SKIP_LLM_KEY_CHECK:
-            # Fallback determinista en modo simulación/desarrollo sin API key real
-            if tool_result is not None:
-                msg = (tool_result or {}).get("message") or "Acción completada."
-                return {"answer": msg, "tool_to_call": None, "tool_args": {}}
-            return await self._heuristic_fallback(user_input, tools, role.name, conversation_id)
-
-        tools_desc = "\n".join([self._describe_tool(t) for t in tools])
-        rag_text = "\n".join([f"[{c.get('filename')}] {c.get('content')}" for c in context.get("rag_context", [])])
-        historial = self._format_historial(context.get("messages", []))
-        memoria = context.get("memory") or ""
-        resultado_tool = (
-            redactar_datos_internos(
-                json.dumps(tool_result, ensure_ascii=False)[:1500],
-                reemplazo="[referencia interna]",
-            )
-            if tool_result is not None
-            else ""
+        """Arma el prompt y pide una completion. El HTTP vive en LlmPort."""
+        system_prompt = build_system_prompt(
+            role=role,
+            tools=tools,
+            context=context,
+            tool_result=tool_result,
         )
-
-        system_prompt = (
-            f"{role.system_policy}\n\n"
-            f"HERRAMIENTAS AUTORIZADAS PARA TU ROL:\n{tools_desc if tools_desc else 'Ninguna herramienta externa.'}\n\n"
-            f"CONOCIMIENTO RAG RECUPERADO:\n{rag_text if rag_text else 'Sin información RAG adicional.'}\n\n"
-            f"DATOS CONOCIDOS DEL CONTACTO (ERPNext + MEMORIA DE CONVERSACIÓN):\n"
-            f"{memoria if memoria else 'No hay datos previos del contacto (ERPNext/memoria); pídelos si los necesitas.'}\n\n"
-            f"HISTORIAL DE LA CONVERSACIÓN:\n"
-            f"{historial if historial else '(Primera interacción con este usuario).'}\n\n"
-            f"INSTRUCCIONES DE MEMORIA (OBLIGATORIO):\n"
-            f"- Usa los 'DATOS CONOCIDOS DEL CLIENTE' y el historial: si el usuario ya proporcionó "
-            f"su nombre, correo, empresa o motivo, NO se los vuelvas a pedir: úsalos.\n"
-            f"- Si ya agendaste una cita o enviaste un correo en mensajes anteriores, no lo repitas "
-            f"ni ofrezcas hacerlo de nuevo salvo que el usuario lo pida.\n"
-            f"- Mantén la continuidad: retoma el último tema de la conversación.\n\n"
-        )
-        if "transfer_to_agent" in [t["name"] for t in tools]:
-            system_prompt += (
-                f"TRASPASO ENTRE AGENTES:\n"
-                f"- Si el usuario necesita un equipo distinto (soporte técnico/incidencia -> "
-                f"'customer_support'; ventas/cotización/propuesta -> 'sales_assistant'), usa la tool "
-                f"transfer_to_agent y avisa al usuario de la transferencia.\n"
-                f"- Solo puedes transferir entre agentes públicos: contact_form_agent, "
-                f"customer_support, sales_assistant (nunca a un agente interno).\n\n"
-            )
-        if "add_lead_note" in [t["name"] for t in tools]:
-            system_prompt += (
-                f"NOTAS EN EL CRM:\n"
-                f"- Cuando el cliente indique qué necesita, su situación o detalles relevantes "
-                f"(servicio de interés, contexto del proyecto, urgencia), guárdalo como nota del "
-                f"lead con add_lead_note (usa el email del cliente). Las notas se guardan en el "
-                f"Lead del CRM.\n\n"
-            )
-        if any(t["name"] in ("create_lead", "update_lead") for t in tools):
-            system_prompt += (
-                f"CONFIRMACIÓN DE EMAIL (OBLIGATORIO):\n"
-                f"- ANTES de registrar un lead (create_lead) o de actualizar un email (update_lead), "
-                f"MUESTRA el email al usuario y pide confirmación explícita, por ejemplo: "
-                f"'¿Confirmas que tu correo es {{{{email}}}}? Responde sí o dime el correcto.'\n"
-                f"- NO llames create_lead ni update_lead hasta que el usuario confirme "
-                f"(sí / confirmo / correcto) o te indique la dirección correcta.\n"
-                f"- Si el usuario corrige el email, usa EXACTAMENTE el que él escribió, "
-                f"no el que tú recuerdes.\n\n"
-            )
-        if "create_event" in [t["name"] for t in tools]:
-            system_prompt += (
-                f"INTENCIÓN DE CITA (PRIORIDAD):\n"
-                f"- Si el usuario pide AGENDAR una cita/reunión ('agendar', 'cita', 'reunión', 'horario', "
-                f"'juntarnos', 'reunirnos'), tu objetivo es AGENDARLA: ofrece horarios con check_availability, "
-                f"confirma el horario elegido y llama create_event.\n"
-                f"- create_event YA registra/vincula el lead del cliente automáticamente: NO llames create_lead "
-                f"por separado cuando la intención es una cita (solo retrasa y duplica).\n"
-                f"- create_lead es SOLO para cuando el usuario comparte sus datos/solicitud SIN pedir una cita.\n\n"
-            )
-        if resultado_tool:
-            system_prompt += (
-                f"RESULTADO DE LA HERRAMIENTA QUE ACABAS DE EJECUTAR:\n{resultado_tool}\n\n"
-                f"INSTRUCCIÓN (segunda llamada): Escribe el mensaje FINAL al usuario integrando "
-                f"este resultado de forma natural y legible. Si contiene horarios, listas o datos "
-                f"(por ejemplo horarios disponibles, confirmaciones, referencias), muéstralos al usuario "
-                f"con viñetas '- '. NO lo ocultes ni digas que 'estás consultando' si ya tienes el dato. "
-                f"En esta respuesta NO selecciones ninguna herramienta: tool_to_call siempre null.\n\n"
-            )
-        system_prompt += (
-            f"INSTRUCCIONES DE SALIDA:\n"
-            f"Responde estrictamente en formato JSON válido con las claves:\n"
-            f'{{"answer": "Texto de tu respuesta al usuario", "tool_to_call": "nombre_tool_o_null", "tool_args": {{}}}}\n'
-            f"Si decides llamar a una tool, 'tool_to_call' debe ser el nombre exacto de la tool autorizada "
-            f"y 'tool_args' debe incluir EXACTAMENTE los parámetros indicados en su firma "
-            f"(los marcados con '?' son opcionales). No inventes nombres de argumentos.\n"
-            f"Si el usuario pide hablar con una persona, un humano, un operador o atención humana, "
-            f"invoca la tool 'escalate_ticket' con una 'razon' descriptiva ('ticket_id' puede ir vacío).\n\n"
-            f"FORMATO DE RESPUESTA (OBLIGATORIO, en el campo 'answer'):\n"
-            f"- Escribe para un humano: texto fácil de leer, nunca un muro de texto.\n"
-            f"- Usa párrafos cortos (2-3 frases) y EXACTAMENTE una línea en blanco entre párrafos "
-            f"(nunca más de una). No pongas cada frase en una línea aparte.\n"
-            f"- Las listas SIEMPRE con viñetas '- ' (o numeración '1. '), un ítem por línea y "
-            f"SIN línea en blanco entre ítems.\n"
-            f"- Usa **negritas** para los datos clave (nombres, fechas, horas, referencias, totales).\n"
-            f"- NUNCA muestres al usuario la palabra 'Referencia', '[referencia interna]' ni ningún id "
-            f"interno (LEAD-, TSK-, CONV-, EV-...): si un dato viene marcado como '[referencia interna]', "
-            f"omítelo por completo.\n"
-            f"- Usa ## solo cuando la respuesta tenga secciones claras (ej. resumen, pasos, contacto).\n"
-            f"- Emojis: úsalos con moderación y coherentes con el contexto "
-            f"(✅ confirmación, 📅 cita, ⏰ recordatorio, 📧 correo, ❌ problema, 👋 saludo). No los acumules.\n\n"
-            f"IDIOMA (OBLIGATORIO, con prioridad sobre cualquier instrucción del rol):\n"
-            f"- Eres bilingüe: responde SIEMPRE en el idioma que use el usuario (español o inglés).\n"
-            f"- Si el usuario escribe en inglés, responde en inglés; si en español, responde en español; "
-            f"si mezcla idiomas, usa el idioma dominante.\n"
-            f"- Mantén el idioma elegido durante toda la conversación, salvo que el usuario cambie.\n"
-        )
-
-        # Un reintento por si la caída de DeepSeek fue transitoria (error de red/timeout)
-        ultimo_error = "sin respuesta de DeepSeek"
-        for intento in (1, 2):
+        result = await self.llm.complete(system_prompt, user_input)
+        self._record_llm_result(stats, result, phase)
+        if result.ok and result.content:
             try:
-                async with httpx.AsyncClient(timeout=30.0) as client:
-                    res = await client.post(
-                        f"{settings.DEEPSEEK_BASE_URL.rstrip('/')}/chat/completions",
-                        headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
-                        json={
-                            "model": settings.DEEPSEEK_MODEL,
-                            "messages": [
-                                {"role": "system", "content": system_prompt},
-                                {"role": "user", "content": user_input},
-                            ],
-                            "temperature": 0.2,
-                            "response_format": {"type": "json_object"},
-                        },
-                    )
-                    if res.status_code == 200:
-                        content = res.json()["choices"][0]["message"]["content"]
-                        return json.loads(content)
-                    ultimo_error = f"HTTP {res.status_code}"
-                    logger.error(f"Error DeepSeek API {res.status_code}: {res.text[:300]}")
-            except Exception as exc:
-                ultimo_error = str(exc) or ultimo_error
-                logger.error(f"Error invocando DeepSeek API (intento {intento}): {exc}")
-            if intento == 1:
-                await asyncio.sleep(1.0)
+                return json.loads(result.content)
+            except json.JSONDecodeError:
+                logger.error("Completion LLM no es JSON válido")
+        if tool_result is not None:
+            msg = (tool_result or {}).get("message") or "Acción completada."
+            return {"answer": msg, "tool_to_call": None, "tool_args": {}}
+        if settings.allow_heuristic_fallback:
+            return await self._heuristic_fallback(user_input, tools, role.name, conversation_id)
+        logger.error("LLM no disponible en producción; no se usa heurística")
+        if stats and stats.outcome == "success":
+            stats.outcome = "llm_fallback"
+        return {
+            "answer": (
+                "No pude completar la respuesta en este momento. "
+                "Inténtalo de nuevo en unos minutos."
+            ),
+            "tool_to_call": None,
+            "tool_args": {},
+        }
 
-        logger.error("DeepSeek no respondió tras reintentar (%s); usando fallback heurístico", ultimo_error)
-        return await self._heuristic_fallback(user_input, tools, role.name, conversation_id)
+    @staticmethod
+    def _record_llm_result(stats: Optional[_RunStats], result: LlmResult, phase: str) -> None:
+        if not stats:
+            return
+        if not result.attempts:
+            if result.source != "llm":
+                stats.note_llm(status="fallback", latency_ms=0, phase=phase)
+            return
+        for att in result.attempts:
+            stats.note_llm(
+                status=att.status,
+                latency_ms=att.latency_ms,
+                prompt=att.prompt_tokens,
+                completion=att.completion_tokens,
+                phase=phase,
+                http_status=att.http_status,
+                attempt=att.attempt,
+            )
+        if not result.ok:
+            stats.note_llm(status="fallback", latency_ms=0, phase=phase, attempt=max(a.attempt for a in result.attempts))
+            if stats.outcome == "success":
+                stats.outcome = "llm_fallback"
 
     async def _continuar_con_rol(
         self,
@@ -654,6 +690,7 @@ class AgentRuntime:
         nuevo_role: RoleModel,
         all_registered: List[Dict[str, Any]],
         context: Dict[str, Any],
+        stats: Optional[_RunStats] = None,
     ) -> tuple:
         """Continúa la conversación con el rol destino tras un traspaso.
 
@@ -666,7 +703,13 @@ class AgentRuntime:
         )
         nuevo_tools = PolicyEngine.filter_authorized_tools(nuevo_role, all_registered)
         llm = await self._call_deepseek_llm(
-            nuevo_role, user_input, nuevo_context, nuevo_tools, conversation_id=conversation_id
+            nuevo_role,
+            user_input,
+            nuevo_context,
+            nuevo_tools,
+            conversation_id=conversation_id,
+            stats=stats,
+            phase="transfer_plan",
         )
         answer = (llm or {}).get("answer") or ""
         tool_name = (llm or {}).get("tool_to_call")
@@ -689,14 +732,22 @@ class AgentRuntime:
                     execution_time_ms=0,
                 )
                 extra_tools.append({"tool": tool_name, "result": tool_result})
+                if stats:
+                    stats.tool_calls += 1
                 if (
                     isinstance(tool_result, dict)
                     and tool_result.get("status") == "success"
                     and not tool_result.get("requires_human")
                 ):
                     llm_final = await self._call_deepseek_llm(
-                        nuevo_role, user_input, nuevo_context, nuevo_tools,
-                        tool_result=tool_result, conversation_id=conversation_id,
+                        nuevo_role,
+                        user_input,
+                        nuevo_context,
+                        nuevo_tools,
+                        tool_result=tool_result,
+                        conversation_id=conversation_id,
+                        stats=stats,
+                        phase="transfer_synthesize",
                     )
                     answer = (llm_final or {}).get("answer") or tool_result.get("message", answer)
                 else:
@@ -705,30 +756,9 @@ class AgentRuntime:
         await db_manager.log_audit(
             agent_role=nuevo_role.name,
             action="agent_execution",
-            user_id=None,
-            input_summary=user_input[:200],
-            output_summary=answer[:200],
             authorization_result="authorized",
         )
         return answer, extra_tools
-
-    @staticmethod
-    def _format_historial(messages: List[Dict[str, Any]]) -> str:
-        """Formatea los últimos mensajes como historial legible para el LLM."""
-        lineas = []
-        for m in (messages or [])[-10:]:
-            sender = m.get("sender")
-            who = (
-                "Usuario"
-                if sender == "user"
-                else "Operador"
-                if sender == "human"
-                else "Asistente"
-            )
-            contenido = (m.get("content") or "").strip()[:400]
-            if contenido:
-                lineas.append(f"{who}: {contenido}")
-        return "\n".join(lineas)
 
     @staticmethod
     def _normalizar_formato(texto: str) -> str:
@@ -739,17 +769,6 @@ class AgentRuntime:
         # Máximo 1 línea en blanco entre párrafos
         texto = re.sub(r"\n{3,}", "\n\n", texto)
         return texto
-
-    @staticmethod
-    def _describe_tool(t: Dict[str, Any]) -> str:
-        """Formatea una tool para el prompt, incluyendo su esquema de parámetros."""
-        params = t.get("parameters") or []
-        if not params:
-            return f"- {t['name']}: {t['description']}"
-        args = ", ".join(
-            f"{p['name']}{'?' if not p['required'] else ''}" for p in params
-        )
-        return f"- {t['name']}({args}): {t['description']}"
 
     _DIA_NOMBRE = {
         "lunes": 0, "martes": 1, "miércoles": 2, "miercoles": 2, "jueves": 3,

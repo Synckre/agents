@@ -19,6 +19,13 @@ export function getApiBase(): string {
 /** En el navegador es always same-origin; en servidor apunta al backend. */
 export const API_BASE = getApiBase();
 
+type TokenProvider = () => Promise<string | null | undefined>;
+let tokenProvider: TokenProvider | null = null;
+
+export function setApiTokenProvider(provider: TokenProvider | null) {
+  tokenProvider = provider;
+}
+
 export async function fetchApi(endpoint: string, options: RequestInit = {}) {
   const isFormData = typeof FormData !== 'undefined' && options.body instanceof FormData;
 
@@ -26,15 +33,14 @@ export async function fetchApi(endpoint: string, options: RequestInit = {}) {
     ...(options.headers || {}),
   } as Record<string, string>;
 
-  if (!headers['Authorization'] && typeof window !== 'undefined') {
+  if (!headers['Authorization'] && tokenProvider) {
     try {
-      const clerk = (window as unknown as { Clerk?: { session?: { getToken?: () => Promise<string | null> } } }).Clerk;
-      const token = clerk?.session?.getToken ? await clerk.session.getToken() : null;
+      const token = await tokenProvider();
       if (token) {
         headers['Authorization'] = `Bearer ${token}`;
       }
     } catch {
-      // Sin sesión Clerk: las rutas protegidas responderán 401
+      // Sin sesión: las rutas protegidas responderán 401
     }
   }
 

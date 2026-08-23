@@ -17,11 +17,13 @@ import jwt
 from fastapi import Header, HTTPException, status
 from jwt import PyJWKClient
 
+from app.application.auth import Principal, resolve_allowed_role as _resolve_role
 from app.infrastructure.config import settings
 from app.infrastructure.db.manager import db_manager
 
 logger = logging.getLogger("security")
 
+# Alias histórico para routers/tests.
 DomainRole = Literal["public", "internal", "admin"]
 
 _jwks_clients: Dict[str, PyJWKClient] = {}
@@ -159,6 +161,23 @@ async def _api_key_is_active(raw_key: str) -> bool:
     return bool(row)
 
 
+async def resolve_principal(
+    authorization: Optional[str],
+    cookie: Optional[str],
+    x_api_key: Optional[str],
+) -> Principal:
+    presented = _presented_api_key(authorization, x_api_key)
+    if presented:
+        if await _api_key_is_active(presented):
+            return Principal(kind="integration", subject="api_key")
+        raise _unauth()
+    token = _token_from_headers(authorization, cookie)
+    if not token or token.startswith("sk_"):
+        return Principal(kind="anonymous")
+    claims = verify_clerk_token(token)
+    return Principal(kind="user", subject=str(claims.get("sub") or ""), claims=claims)
+
+
 async def require_authenticated_user(
     authorization: Optional[str] = Header(default=None, alias="Authorization"),
     cookie: Optional[str] = Header(default=None, alias="Cookie"),
@@ -169,26 +188,48 @@ async def require_authenticated_user(
     return verify_clerk_token(token)
 
 
+async def require_user(
+    authorization: Optional[str] = Header(default=None, alias="Authorization"),
+    cookie: Optional[str] = Header(default=None, alias="Cookie"),
+) -> Principal:
+    claims = await require_authenticated_user(authorization, cookie)
+    return Principal(kind="user", subject=str(claims.get("sub") or ""), claims=claims)
+
+
+async def require_integration_or_user(
+    authorization: Optional[str] = Header(default=None, alias="Authorization"),
+    cookie: Optional[str] = Header(default=None, alias="Cookie"),
+    x_api_key: Optional[str] = Header(default=None, alias="x-api-key"),
+) -> Principal:
+    principal = await resolve_principal(authorization, cookie, x_api_key)
+    if principal.is_anonymous:
+        raise _unauth()
+    return principal
+
+
 async def authenticate_request(
     authorization: Optional[str] = Header(default=None, alias="Authorization"),
     cookie: Optional[str] = Header(default=None, alias="Cookie"),
     x_api_key: Optional[str] = Header(default=None, alias="x-api-key"),
-) -> DomainRole:
+) -> Principal:
     presented = _presented_api_key(authorization, x_api_key)
-    if presented and await _api_key_is_active(presented):
-        return "admin"
+    if presented:
+        if await _api_key_is_active(presented):
+            return Principal(kind="integration", subject="api_key")
+        # Key inválida en ruta pública: se trata como anónimo (no 401 al chat público).
+        return Principal(kind="anonymous")
     token = _token_from_headers(authorization, cookie)
     if not token or token.startswith("sk_"):
-        return "public"
-    verify_clerk_token(token)
-    return "admin"
+        return Principal(kind="anonymous")
+    claims = verify_clerk_token(token)
+    return Principal(kind="user", subject=str(claims.get("sub") or ""), claims=claims)
 
 
 async def require_public_key(
     authorization: Optional[str] = Header(default=None, alias="Authorization"),
     cookie: Optional[str] = Header(default=None, alias="Cookie"),
     x_api_key: Optional[str] = Header(default=None, alias="x-api-key"),
-) -> DomainRole:
+) -> Principal:
     return await authenticate_request(authorization, cookie, x_api_key)
 
 
@@ -196,46 +237,20 @@ async def require_internal_key(
     authorization: Optional[str] = Header(default=None, alias="Authorization"),
     cookie: Optional[str] = Header(default=None, alias="Cookie"),
     x_api_key: Optional[str] = Header(default=None, alias="x-api-key"),
-) -> DomainRole:
-    presented = _presented_api_key(authorization, x_api_key)
-    if presented:
-        if await _api_key_is_active(presented):
-            return "admin"
-        raise _unauth()
-    await require_authenticated_user(authorization, cookie)
-    return "admin"
-
-
-async def require_admin_key(
-    authorization: Optional[str] = Header(default=None, alias="Authorization"),
-    cookie: Optional[str] = Header(default=None, alias="Cookie"),
-    x_api_key: Optional[str] = Header(default=None, alias="x-api-key"),
-) -> DomainRole:
-    return await require_internal_key(authorization, cookie, x_api_key)
+) -> Principal:
+    return await require_integration_or_user(authorization, cookie, x_api_key)
 
 
 async def require_any_key(
     authorization: Optional[str] = Header(default=None, alias="Authorization"),
     cookie: Optional[str] = Header(default=None, alias="Cookie"),
     x_api_key: Optional[str] = Header(default=None, alias="x-api-key"),
-) -> DomainRole:
+) -> Principal:
     return await authenticate_request(authorization, cookie, x_api_key)
 
 
 PUBLIC_ALLOWED_ROLES = {"customer_support", "contact_form_agent"}
-ALL_ROLES = {
-    "customer_support",
-    "sales_assistant",
-    "operations_assistant",
-    "administrative_assistant",
-    "management_assistant",
-    "contact_form_agent",
-}
 
 
-def resolve_allowed_role(domain: Optional[DomainRole], requested_role: Optional[str]) -> str:
-    """Resuelve el rol de agente. Anónimos (public) solo formulario de contacto."""
-    if domain == "public":
-        return "contact_form_agent"
-    role = (requested_role or "contact_form_agent").strip() or "contact_form_agent"
-    return role if role in ALL_ROLES else "contact_form_agent"
+def resolve_allowed_role(principal, requested_role: Optional[str]) -> str:
+    return _resolve_role(principal, requested_role)

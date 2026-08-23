@@ -45,6 +45,30 @@ interface AuditLog {
 
 const STATS = [
   {
+    key: 'agent_runs_24h' as const,
+    label: 'Pasadas 24h',
+    hint: 'Vueltas del runtime',
+    icon: Bot,
+  },
+  {
+    key: 'avg_run_duration_ms' as const,
+    label: 'Latencia media',
+    hint: 'ms por pasada',
+    icon: Clock,
+  },
+  {
+    key: 'llm_fallback_total' as const,
+    label: 'Fallbacks LLM',
+    hint: 'Heurística sin modelo',
+    icon: Activity,
+  },
+  {
+    key: 'pending_approvals' as const,
+    label: 'HITL pendientes',
+    hint: 'Esperando humano',
+    icon: Wrench,
+  },
+  {
     key: 'erp_mutations' as const,
     label: 'Mutaciones ERP',
     hint: 'Registros en Postgres',
@@ -86,6 +110,10 @@ export default function DashboardPage() {
     calendar_bookings: 0,
     emails_sent: 0,
     rag_queries: 0,
+    agent_runs_24h: 0,
+    avg_run_duration_ms: 0,
+    llm_fallback_total: 0,
+    pending_approvals: 0,
   });
   const [conversations, setConversations] = useState<Conversation[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
@@ -163,7 +191,11 @@ export default function DashboardPage() {
                       <span className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                         {stat.label}
                       </span>
-                      <div className="text-3xl font-bold text-foreground">{stats[stat.key]}</div>
+                      <div className="text-3xl font-bold text-foreground">
+                        {stat.key === 'avg_run_duration_ms'
+                          ? Math.round(Number(stats[stat.key] || 0))
+                          : stats[stat.key] ?? 0}
+                      </div>
                       <p className="text-xs text-muted-foreground flex items-center gap-1">
                         <TrendingUp className="size-3.5" />
                         {stat.hint}

@@ -30,6 +30,24 @@ logger = logging.getLogger("db_manager")
 class DatabaseManager:
     def __init__(self):
         self.pool: Optional[AsyncConnectionPool] = None
+        self._conversations = None
+        self._telemetry = None
+
+    @property
+    def conversations(self):
+        if self._conversations is None:
+            from app.infrastructure.db.repos.conversations import ConversationRepository
+
+            self._conversations = ConversationRepository(self)
+        return self._conversations
+
+    @property
+    def telemetry(self):
+        if self._telemetry is None:
+            from app.infrastructure.db.repos.telemetry import TelemetryRepository
+
+            self._telemetry = TelemetryRepository(self)
+        return self._telemetry
 
     async def connect(self):
         if self.pool and not self.pool.closed:
@@ -44,7 +62,7 @@ class DatabaseManager:
                 kwargs={"autocommit": True, "connect_timeout": 5},
             )
             await self.pool.open()
-            await self._run_schema_setup()
+            await self._run_migrations()
             logger.info("Base de datos y esquema 'synckre' listos.")
         except Exception as e:
             logger.error(f"Error conectando a PostgreSQL: {e}")
@@ -62,6 +80,23 @@ class DatabaseManager:
             return
         async with self.pool.connection() as conn:
             await conn.execute(SETUP_SCHEMA_SQL)
+
+    async def _run_migrations(self):
+        """Alembic upgrade; si falla (p.ej. sin sqlalchemy url), DDL idempotente."""
+        try:
+            from pathlib import Path
+            from alembic import command
+            from alembic.config import Config
+
+            here = Path(__file__).resolve().parent
+            ini = here.parents[3] / "alembic.ini"
+            cfg = Config(str(ini))
+            cfg.set_main_option("script_location", str(here / "migrations"))
+            command.upgrade(cfg, "head")
+            return
+        except Exception as exc:
+            logger.warning("Alembic no aplicó migraciones (%s); usando DDL idempotente.", exc)
+        await self._run_schema_setup()
 
     async def disconnect(self):
         if self.pool:
@@ -91,122 +126,26 @@ class DatabaseManager:
                 return dict(row) if row else None
 
     # ==========================================
-    # CONVERSATIONS & MESSAGES
+    # CONVERSATIONS (delegado a ConversationRepository)
     # ==========================================
 
     async def create_conversation(self, conv: ConversationModel) -> ConversationModel:
-        if not await self._ensure_connected():
-            return conv
-        sql = """
-        INSERT INTO synckre.conversations
-            (id, channel, user_id, customer_id, role, status, created_at, updated_at, metadata)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-        ON CONFLICT (id) DO UPDATE SET
-            role = EXCLUDED.role,
-            status = EXCLUDED.status,
-            updated_at = EXCLUDED.updated_at,
-            metadata = EXCLUDED.metadata;
-        """
-        async with self.pool.connection() as conn:
-            await conn.execute(
-                sql,
-                (
-                    conv.id,
-                    conv.channel.value if hasattr(conv.channel, "value") else str(conv.channel),
-                    conv.user_id,
-                    conv.customer_id,
-                    conv.role,
-                    conv.status,
-                    conv.created_at,
-                    conv.updated_at,
-                    json.dumps(conv.metadata),
-                ),
-            )
-        return conv
+        return await self.conversations.create(conv)
 
     async def get_conversation(self, conversation_id: str) -> Optional[ConversationModel]:
-        if not await self._ensure_connected():
-            return None
-        sql = """
-        SELECT id, channel, user_id, customer_id, role, status, created_at, updated_at, metadata
-        FROM synckre.conversations
-        WHERE id = %s;
-        """
-        async with self.pool.connection() as conn:
-            async with conn.cursor() as cur:
-                await cur.execute(sql, (conversation_id,))
-                row = await cur.fetchone()
-                if not row:
-                    return None
-                return ConversationModel(
-                    id=row[0],
-                    channel=row[1],
-                    user_id=row[2],
-                    customer_id=row[3],
-                    role=row[4],
-                    status=row[5],
-                    created_at=row[6],
-                    updated_at=row[7],
-                    metadata=row[8] if isinstance(row[8], dict) else json.loads(row[8] or "{}"),
-                )
+        return await self.conversations.get(conversation_id)
 
     async def list_conversations(self, limit: int = 50) -> List[ConversationModel]:
-        if not await self._ensure_connected():
-            return []
-        sql = """
-        SELECT id, channel, user_id, customer_id, role, status, created_at, updated_at, metadata
-        FROM synckre.conversations
-        ORDER BY updated_at DESC
-        LIMIT %s;
-        """
-        async with self.pool.connection() as conn:
-            async with conn.cursor() as cur:
-                await cur.execute(sql, (limit,))
-                rows = await cur.fetchall()
-                return [
-                    ConversationModel(
-                        id=r[0],
-                        channel=r[1],
-                        user_id=r[2],
-                        customer_id=r[3],
-                        role=r[4],
-                        status=r[5],
-                        created_at=r[6],
-                        updated_at=r[7],
-                        metadata=r[8] if isinstance(r[8], dict) else json.loads(r[8] or "{}"),
-                    )
-                    for r in rows
-                ]
+        return await self.conversations.list(limit)
 
     async def delete_conversation(self, conversation_id: str) -> bool:
-        """Elimina una conversación y su historial (los mensajes y tareas se borran en cascada)."""
-        if not await self._ensure_connected():
-            return False
-        sql = "DELETE FROM synckre.conversations WHERE id = %s;"
-        async with self.pool.connection() as conn:
-            async with conn.cursor() as cur:
-                await cur.execute(sql, (conversation_id,))
-                return (cur.rowcount or 0) > 0
+        return await self.conversations.delete(conversation_id)
 
     async def update_conversation_status(self, conversation_id: str, status: str) -> bool:
-        """Actualiza el estado de una conversación ('active', 'paused_human', 'closed')."""
-        if not await self._ensure_connected():
-            return False
-        sql = "UPDATE synckre.conversations SET status = %s, updated_at = %s WHERE id = %s;"
-        async with self.pool.connection() as conn:
-            async with conn.cursor() as cur:
-                await cur.execute(sql, (status, datetime.utcnow(), conversation_id))
-                return (cur.rowcount or 0) > 0
+        return await self.conversations.update_status(conversation_id, status)
 
     async def update_conversation_role(self, conversation_id: str, role: str) -> bool:
-        """Cambia el rol del agente que atiende la conversación (traspaso entre agentes)."""
-        if not await self._ensure_connected():
-            return False
-        sql = "UPDATE synckre.conversations SET role = %s, updated_at = %s WHERE id = %s;"
-        async with self.pool.connection() as conn:
-            async with conn.cursor() as cur:
-                await cur.execute(sql, (role, datetime.utcnow(), conversation_id))
-                return (cur.rowcount or 0) > 0
+        return await self.conversations.update_role(conversation_id, role)
 
     async def get_lead_erp_id_by_email(self, email: str) -> str:
         """Devuelve el erp_id del lead guardado en la memoria local para ese email (si existe)."""
@@ -296,75 +235,13 @@ class DatabaseManager:
             return False
 
     async def update_conversation_metadata(self, conversation_id: str, metadata: Dict[str, Any]) -> bool:
-        """Fusiona metadata en la conversación (p.ej. customer_email detectado)."""
-        if not await self._ensure_connected():
-            return False
-        sql = "UPDATE synckre.conversations SET metadata = metadata || %s::jsonb, updated_at = %s WHERE id = %s;"
-        try:
-            async with self.pool.connection() as conn:
-                await conn.execute(sql, (json.dumps(metadata), datetime.utcnow(), conversation_id))
-            return True
-        except Exception as exc:
-            logger.error(f"Error actualizando metadata de conversación: {exc}")
-            return False
+        return await self.conversations.update_metadata(conversation_id, metadata)
 
     async def add_message(self, msg: MessageModel) -> MessageModel:
-        if not await self._ensure_connected():
-            return msg
-        sql = """
-        INSERT INTO synckre.messages
-            (id, conversation_id, sender, content, message_type, tool_calls, created_at, metadata)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s);
-        """
-        async with self.pool.connection() as conn:
-            async with conn.transaction():
-                await conn.execute(
-                    sql,
-                    (
-                        msg.id,
-                        msg.conversation_id,
-                        msg.sender,
-                        msg.content,
-                        msg.message_type,
-                        json.dumps(msg.tool_calls or []),
-                        msg.created_at,
-                        json.dumps(msg.metadata),
-                    ),
-                )
-                # Actualizar updated_at de la conversación (atómico con el INSERT)
-                await conn.execute(
-                    "UPDATE synckre.conversations SET updated_at = %s WHERE id = %s;",
-                    (msg.created_at, msg.conversation_id),
-                )
-        return msg
+        return await self.conversations.add_message(msg)
 
     async def get_messages(self, conversation_id: str, limit: int = 50) -> List[MessageModel]:
-        if not await self._ensure_connected():
-            return []
-        sql = """
-        SELECT id, conversation_id, sender, content, message_type, tool_calls, created_at, metadata
-        FROM synckre.messages
-        WHERE conversation_id = %s
-        ORDER BY created_at ASC
-        LIMIT %s;
-        """
-        async with self.pool.connection() as conn:
-            async with conn.cursor() as cur:
-                await cur.execute(sql, (conversation_id, limit))
-                rows = await cur.fetchall()
-                return [
-                    MessageModel(
-                        id=r[0],
-                        conversation_id=r[1],
-                        sender=r[2],
-                        content=r[3],
-                        message_type=r[4],
-                        tool_calls=r[5] if isinstance(r[5], list) else json.loads(r[5] or "[]"),
-                        created_at=r[6],
-                        metadata=r[7] if isinstance(r[7], dict) else json.loads(r[7] or "{}"),
-                    )
-                    for r in rows
-                ]
+        return await self.conversations.get_messages(conversation_id, limit)
 
     # ==========================================
     # TASKS & APPROVALS
@@ -578,129 +455,17 @@ class DatabaseManager:
     # AUDIT LOGS
     # ==========================================
 
-    async def log_audit(
-        self,
-        *,
-        agent_role: str,
-        action: str,
-        user_id: Optional[str] = None,
-        tool_name: Optional[str] = None,
-        task_id: Optional[str] = None,
-        workflow_id: Optional[str] = None,
-        input_summary: Optional[str] = None,
-        output_summary: Optional[str] = None,
-        authorization_result: str = "authorized",
-        approval_id: Optional[str] = None,
-    ):
-        if not await self._ensure_connected():
-            return
-        sql = """
-        INSERT INTO synckre.audit_logs
-            (user_id, agent_role, tool_name, task_id, workflow_id, action, input_summary, output_summary, authorization_result, approval_id)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s);
-        """
-        try:
-            async with self.pool.connection() as conn:
-                await conn.execute(
-                    sql,
-                    (
-                        user_id,
-                        agent_role,
-                        tool_name,
-                        task_id,
-                        workflow_id,
-                        action,
-                        input_summary,
-                        output_summary,
-                        authorization_result,
-                        approval_id,
-                    ),
-                )
-        except Exception as e:
-            logger.error(f"Error guardando audit log: {e}")
+    async def log_audit(self, **kwargs) -> None:
+        return await self.telemetry.log_audit(**kwargs)
 
-    async def log_tool_execution(
-        self,
-        *,
-        conversation_id: str,
-        tool_name: str,
-        input_data: Dict[str, Any],
-        output_data: Optional[Dict[str, Any]] = None,
-        task_id: Optional[str] = None,
-        status: str = "success",
-        execution_time_ms: int = 0,
-    ):
-        if not await self._ensure_connected():
-            return
-        sql = """
-        INSERT INTO synckre.tool_executions
-            (id, task_id, conversation_id, tool_name, input_data, output_data, status, execution_time_ms)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s);
-        """
-        tool_id = f"TEX-{uuid.uuid4().hex[:8]}"
-        try:
-            async with self.pool.connection() as conn:
-                await conn.execute(
-                    sql,
-                    (
-                        tool_id,
-                        task_id,
-                        conversation_id,
-                        tool_name,
-                        json.dumps(input_data),
-                        json.dumps(output_data) if output_data else None,
-                        status,
-                        execution_time_ms,
-                    ),
-                )
-        except Exception as e:
-            logger.error(f"Error guardando tool execution: {e}")
+    async def log_tool_execution(self, **kwargs) -> None:
+        return await self.telemetry.log_tool_execution(**kwargs)
 
-    async def list_tool_executions(
-        self,
-        conversation_id: Optional[str] = None,
-        limit: int = 50,
-    ) -> List[Dict[str, Any]]:
-        """Devuelve la telemetría detallada de ejecuciones de herramientas (input/output JSON completos)."""
-        if not await self._ensure_connected():
-            return []
-        if conversation_id:
-            sql = """
-            SELECT id, task_id, conversation_id, tool_name, input_data, output_data,
-                   status, execution_time_ms, created_at
-            FROM synckre.tool_executions
-            WHERE conversation_id = %s
-            ORDER BY created_at DESC
-            LIMIT %s;
-            """
-            params = (conversation_id, limit)
-        else:
-            sql = """
-            SELECT id, task_id, conversation_id, tool_name, input_data, output_data,
-                   status, execution_time_ms, created_at
-            FROM synckre.tool_executions
-            ORDER BY created_at DESC
-            LIMIT %s;
-            """
-            params = (limit,)
-        async with self.pool.connection() as conn:
-            async with conn.cursor() as cur:
-                await cur.execute(sql, params)
-                rows = await cur.fetchall()
-                return [
-                    {
-                        "id": r[0],
-                        "task_id": r[1],
-                        "conversation_id": r[2],
-                        "tool_name": r[3],
-                        "input_data": r[4] if isinstance(r[4], dict) else json.loads(r[4] or "{}"),
-                        "output_data": r[5] if isinstance(r[5], dict) else (json.loads(r[5]) if r[5] else None),
-                        "status": r[6],
-                        "execution_time_ms": r[7],
-                        "created_at": r[8].isoformat() if r[8] else None,
-                    }
-                    for r in rows
-                ]
+    async def persist_run_telemetry(self, **kwargs) -> None:
+        return await self.telemetry.persist_run(**kwargs)
+
+    async def list_tool_executions(self, conversation_id: Optional[str] = None, limit: int = 50):
+        return await self.telemetry.list_tool_executions(conversation_id=conversation_id, limit=limit)
 
     # ==========================================
     # LEADS (registrados en synckre.memory con entity_type='lead')
@@ -986,37 +751,8 @@ class DatabaseManager:
                     "last_interaction": row[10].isoformat() if row[10] else None,
                 }
 
-    async def list_audit_logs(self, limit: int = 100) -> List[Dict[str, Any]]:
-        if not await self._ensure_connected():
-            return []
-        sql = """
-        SELECT id, user_id, agent_role, tool_name, task_id, workflow_id, action,
-               input_summary, output_summary, authorization_result, approval_id, timestamp
-        FROM synckre.audit_logs
-        ORDER BY timestamp DESC
-        LIMIT %s;
-        """
-        async with self.pool.connection() as conn:
-            async with conn.cursor() as cur:
-                await cur.execute(sql, (limit,))
-                rows = await cur.fetchall()
-                return [
-                    {
-                        "id": r[0],
-                        "user_id": r[1],
-                        "agent_role": r[2],
-                        "tool_name": r[3],
-                        "task_id": r[4],
-                        "workflow_id": r[5],
-                        "action": r[6],
-                        "input_summary": r[7],
-                        "output_summary": r[8],
-                        "authorization_result": r[9],
-                        "approval_id": r[10],
-                        "timestamp": r[11].isoformat() if r[11] else None,
-                    }
-                    for r in rows
-                ]
+    async def list_audit_logs(self, limit: int = 100):
+        return await self.telemetry.list_audit_logs(limit=limit)
 
     # ==========================================
     # APPOINTMENT REMINDERS (emails automáticos)
@@ -1264,33 +1000,11 @@ class DatabaseManager:
             return []
 
 
-    async def get_analytics_stats(self) -> Dict[str, int]:
-        if not await self._ensure_connected():
-            return {"erp_mutations": 0, "calendar_bookings": 0, "emails_sent": 0, "rag_queries": 0}
-        
-        sql = """
-        SELECT 
-            COALESCE(SUM(CASE WHEN tool_name IN ('create_lead', 'create_customer', 'update_customer') THEN 1 ELSE 0 END), 0) as erp,
-            COALESCE(SUM(CASE WHEN tool_name IN ('create_event', 'reschedule_event') THEN 1 ELSE 0 END), 0) as calendar,
-            COALESCE(SUM(CASE WHEN tool_name = 'send_email' THEN 1 ELSE 0 END), 0) as email,
-            COALESCE(SUM(CASE WHEN tool_name IN ('read_public_knowledge', 'read_internal_knowledge', 'search_documents') THEN 1 ELSE 0 END), 0) as rag
-        FROM synckre.tool_executions;
-        """
-        try:
-            async with self.pool.connection() as conn:
-                async with conn.cursor() as cur:
-                    await cur.execute(sql)
-                    row = await cur.fetchone()
-                    if row:
-                        return {
-                            "erp_mutations": int(row[0]),
-                            "calendar_bookings": int(row[1]),
-                            "emails_sent": int(row[2]),
-                            "rag_queries": int(row[3])
-                        }
-        except Exception as e:
-            logger.error(f"Error cargando estadísticas de telemetría: {e}")
-        return {"erp_mutations": 0, "calendar_bookings": 0, "emails_sent": 0, "rag_queries": 0}
+    async def get_analytics_stats(self):
+        return await self.telemetry.stats()
+
+    async def get_observability_series(self):
+        return await self.telemetry.series()
 
 
 db_manager = DatabaseManager()

@@ -299,4 +299,48 @@ CREATE TABLE IF NOT EXISTS synckre.api_keys (
 );
 
 CREATE INDEX IF NOT EXISTS idx_api_keys_hash ON synckre.api_keys(key_hash);
+
+-- 12. TELEMETRÍA TÉCNICA DEL AGENTE (sin contenido conversacional)
+CREATE TABLE IF NOT EXISTS synckre.agent_runs (
+    id VARCHAR(255) PRIMARY KEY,
+    conversation_id VARCHAR(255),
+    role VARCHAR(100) NOT NULL,
+    channel VARCHAR(50) NOT NULL DEFAULT 'api',
+    outcome VARCHAR(50) NOT NULL DEFAULT 'success',
+    llm_calls INT NOT NULL DEFAULT 0,
+    llm_failures INT NOT NULL DEFAULT 0,
+    llm_latency_ms INT NOT NULL DEFAULT 0,
+    used_fallback BOOLEAN NOT NULL DEFAULT FALSE,
+    tool_calls INT NOT NULL DEFAULT 0,
+    used_rag BOOLEAN NOT NULL DEFAULT FALSE,
+    rag_chunks INT NOT NULL DEFAULT 0,
+    policy_denied BOOLEAN NOT NULL DEFAULT FALSE,
+    duration_ms INT NOT NULL DEFAULT 0,
+    prompt_tokens INT NOT NULL DEFAULT 0,
+    completion_tokens INT NOT NULL DEFAULT 0,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_agent_runs_created ON synckre.agent_runs(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_agent_runs_role ON synckre.agent_runs(role);
+CREATE INDEX IF NOT EXISTS idx_agent_runs_outcome ON synckre.agent_runs(outcome);
+
+CREATE TABLE IF NOT EXISTS synckre.llm_calls (
+    id VARCHAR(255) PRIMARY KEY,
+    run_id VARCHAR(255),
+    conversation_id VARCHAR(255),
+    role VARCHAR(100),
+    phase VARCHAR(50) NOT NULL DEFAULT 'plan',
+    status VARCHAR(50) NOT NULL,
+    latency_ms INT NOT NULL DEFAULT 0,
+    prompt_tokens INT NOT NULL DEFAULT 0,
+    completion_tokens INT NOT NULL DEFAULT 0,
+    http_status INT,
+    attempt INT NOT NULL DEFAULT 1,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_llm_calls_created ON synckre.llm_calls(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_llm_calls_status ON synckre.llm_calls(status);
+CREATE INDEX IF NOT EXISTS idx_tool_executions_name_status ON synckre.tool_executions(tool_name, status);
 """

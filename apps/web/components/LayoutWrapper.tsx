@@ -7,6 +7,7 @@ import { UserButton } from '@clerk/nextjs';
 import { Sidebar } from './Sidebar';
 import { MobileNav } from './MobileNav';
 import { useApiStatus } from '@/hooks/useApiStatus';
+import { AuthTokenBridge } from '@/components/AuthTokenBridge';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 
@@ -33,6 +34,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
   if (isLoginPage) {
     return (
       <div className="w-full min-h-screen flex items-center justify-center bg-background text-foreground">
+        <AuthTokenBridge />
         {children}
       </div>
     );
@@ -43,6 +45,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex w-full min-h-screen bg-background text-foreground">
+      <AuthTokenBridge />
       <Sidebar />
 
       <div className="flex-1 flex flex-col min-w-0 h-screen overflow-y-auto">

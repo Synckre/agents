@@ -86,7 +86,11 @@ async def escalate_ticket(ticket_id: str = "", razon: str = "El usuario solicit�
         )
         ref = res.get("issue_id") or f"ESC-{ticket_id or 'pendiente'}"
         if not res.get("ok"):
-            return {"status": "temporary_failure", "message": f"No se pudo crear la escalación en ERPNext: {res.get('error')}"}
+            return {
+                "status": "temporary_failure",
+                "requires_human": True,
+                "message": f"No se pudo crear la escalación en ERPNext: {res.get('error')}",
+            }
     return {
         "status": "success",
         "requires_human": True,

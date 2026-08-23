@@ -102,10 +102,34 @@ def test_analytics_metrics_rejects_unknown_api_key(monkeypatch):
     assert res.status_code == 401
 
 
+def _mock_observability(monkeypatch):
+    async def fake_stats():
+        return {"emails_sent": 0, "total_executions": 0}
+
+    async def fake_series():
+        return {
+            "agent_runs": [],
+            "run_latency": [],
+            "llm_calls": [],
+            "tools": [],
+            "conversations": [],
+            "messages": [],
+            "tasks": [],
+            "approvals": [],
+            "knowledge_sources": [],
+            "document_chunks": [],
+            "windows": [{"m5": 0, "h1": 0, "h24": 0}],
+        }
+
+    monkeypatch.setattr("app.infrastructure.db.manager.db_manager.get_analytics_stats", fake_stats)
+    monkeypatch.setattr("app.infrastructure.db.manager.db_manager.get_observability_series", fake_series)
+
+
 def test_analytics_metrics_accepts_active_x_api_key(monkeypatch):
     async def active_row(_sql, *_args):
         return {"ok": 1}
 
+    _mock_observability(monkeypatch)
     monkeypatch.setattr("app.interfaces.security.db_manager.fetch_one", active_row)
     client = TestClient(app)
     res = client.get(
@@ -120,6 +144,7 @@ def test_analytics_metrics_accepts_bearer_sk_key(monkeypatch):
     async def active_row(_sql, *_args):
         return {"ok": 1}
 
+    _mock_observability(monkeypatch)
     monkeypatch.setattr("app.interfaces.security.db_manager.fetch_one", active_row)
     client = TestClient(app)
     res = client.get(

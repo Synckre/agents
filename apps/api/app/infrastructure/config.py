@@ -127,6 +127,11 @@ class Settings(BaseSettings):
     def is_production(self) -> bool:
         return (self.ENV or "").strip().lower() in {"prod", "production"}
 
+    @property
+    def allow_heuristic_fallback(self) -> bool:
+        """Heurística solo en dev/test. En producción el agente no inventa tools."""
+        return not self.is_production
+
     @model_validator(mode="after")
     def _validate_deepseek_api_key(self):
         if self.SKIP_LLM_KEY_CHECK:

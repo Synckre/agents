@@ -138,7 +138,7 @@ export default function AuditPage() {
               </div>
             </div>
             <CardDescription>
-              Haz clic en un evento para ver los detalles de entrada y salida.
+              Solo metadatos técnicos (rol, tool, resultado). El texto de conversación no se audita.
             </CardDescription>
           </CardHeader>
 

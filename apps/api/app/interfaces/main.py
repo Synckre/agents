@@ -26,12 +26,15 @@ from app.interfaces.api.v1.tasks import router as tasks_router
 from app.interfaces.api.v1.analytics import router as analytics_router
 from app.interfaces.api.v1.api_keys import router as api_keys_router
 
-# Importar tools para registro
-import app.application.tools  # noqa: F401
+from app.application.agent.tools_register import register_all_tools
+
+register_all_tools()
 
 from app.infrastructure.config import settings
 from app.infrastructure.db.manager import db_manager
 from app.infrastructure.integrations.erp import erpnext_client
+from app.infrastructure.llm.deepseek import DeepseekLlm
+from app.application.agent.runtime import agent_runtime
 from app.application.services.reminder_scheduler import reminder_scheduler
 
 logging.basicConfig(
@@ -53,6 +56,8 @@ async def _connect_db_background() -> None:
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     logger.info("Iniciando Synckre Agent Enterprise Runtime API.")
+    register_all_tools()
+    agent_runtime._llm = DeepseekLlm()
     db_task = asyncio.create_task(_connect_db_background())
     await reminder_scheduler.start()
     yield

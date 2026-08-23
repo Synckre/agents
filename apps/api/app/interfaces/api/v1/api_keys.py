@@ -11,7 +11,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
 from app.infrastructure.db.manager import db_manager
-from app.interfaces.security import require_internal_key, DomainRole
+from app.interfaces.security import require_internal_key, Principal
 
 router = APIRouter(prefix="/api/v1/api-keys", tags=["API Keys"])
 
@@ -30,7 +30,7 @@ class ApiKeyResponse(BaseModel):
 
 
 @router.get("", response_model=List[ApiKeyResponse], summary="Listar API keys activas y revocadas")
-async def list_api_keys(domain: DomainRole = Depends(require_internal_key)):
+async def list_api_keys(_principal: Principal = Depends(require_internal_key)):
     rows = await db_manager.fetch_all(
         """
         SELECT id, name, prefix, is_active, created_at
@@ -56,7 +56,7 @@ async def list_api_keys(domain: DomainRole = Depends(require_internal_key)):
 @router.post("", response_model=ApiKeyResponse, status_code=status.HTTP_201_CREATED, summary="Generar una nueva API Key")
 async def create_api_key(
     req: CreateApiKeyRequest,
-    domain: DomainRole = Depends(require_internal_key)
+    _principal: Principal = Depends(require_internal_key)
 ):
     key_id = f"key_{uuid.uuid4().hex[:12]}"
     secret = secrets.token_urlsafe(32)
@@ -90,7 +90,7 @@ async def create_api_key(
 @router.delete("/{key_id}", status_code=status.HTTP_200_OK, summary="Revocar una API Key")
 async def revoke_api_key(
     key_id: str,
-    domain: DomainRole = Depends(require_internal_key)
+    _principal: Principal = Depends(require_internal_key)
 ):
     row = await db_manager.fetch_one(
         """

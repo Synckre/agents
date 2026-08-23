@@ -32,7 +32,7 @@ AgentSynckre/
 │   │   │   └── interfaces/           # Entrada HTTP
 │   │   │       ├── api/v1/           #   routers (conversations, tasks, approvals, audit, knowledge, calendar, analytics, business, health)
 │   │   │       ├── main.py           #   composición raíz + lifespan (scheduler)
-│   │   │       └── security.py       #   autenticación x-api-key
+│   │   │       └── security.py       #   Clerk JWT + API keys de integración (sin rol)
 │   │   ├── tests/  scripts/  Dockerfile  requirements.txt
 │   └── web/                          # Next.js Control Center (puerto 3000)
 │       ├── app/                      #   rutas (/dashboard, /conversations, /workflows, /knowledge, /agents, /audit, /settings)
@@ -81,3 +81,5 @@ Cliente → Conversación → AgentRuntime (application/agent)
 | RAG | `infrastructure/rag/service.py` | Embeddings Ollama + pgvector |
 | API v1 | `interfaces/api/v1/*` | Endpoints REST |
 | Control Center | `apps/web` | Next.js + shadcn + view transitions |
+| Auth | Clerk (usuarios) + API key activa (Grafana/integraciones), sin roles en la key |
+| LLM | `infrastructure/llm/deepseek.py` vía `LlmPort` (el runtime no usa httpx) |

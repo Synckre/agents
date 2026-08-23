@@ -4,7 +4,7 @@ from pydantic import BaseModel
 from app.infrastructure.db.manager import db_manager
 from app.interfaces.limiter import limiter
 from app.interfaces.security import require_internal_key
-from app.application.tools.crm_tools import guardar_lead
+from app.infrastructure.tools.crm_tools import guardar_lead
 
 router = APIRouter(tags=["Business Entities"])
 

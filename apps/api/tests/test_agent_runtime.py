@@ -12,7 +12,9 @@ from app.application.agent.tools_registry import tool_registry
 from app.domain import AutonomyLevel
 
 # Importar tools
-import app.application.tools  # noqa: F401
+from app.application.agent.tools_register import register_all_tools
+
+register_all_tools()
 
 
 def test_role_retrieval():
@@ -119,7 +121,7 @@ def test_email_templates_build():
 
 def test_create_event_without_integrations_graceful():
     """Sin ERPNext ni Google Calendar configurados, create_event falla claro sin excepción."""
-    from app.application.tools.calendar_tools import create_event
+    from app.infrastructure.tools.calendar_tools import create_event
 
     res = asyncio.run(
         create_event(nombre="Juan", email="juan@example.com", motivo="Cita de prueba")
@@ -166,7 +168,7 @@ def test_config_disponibilidad_desde_erpnext():
     """El parsing de Appointment Booking Settings genera huecos por día y ventana."""
     import asyncio
     from unittest.mock import AsyncMock, patch
-    from app.application.tools.calendar_tools import _config_disponibilidad, clear_availability_cache
+    from app.infrastructure.tools.calendar_tools import _config_disponibilidad, clear_availability_cache
 
     erpnext_cfg = {
         "enable_scheduling": 1,
@@ -177,7 +179,7 @@ def test_config_disponibilidad_desde_erpnext():
         ],
     }
     with patch(
-        "app.application.tools.calendar_tools.erpnext_client.get_appointment_booking_settings",
+        "app.infrastructure.tools.calendar_tools.erpnext_client.get_appointment_booking_settings",
         AsyncMock(return_value=erpnext_cfg),
     ):
         clear_availability_cache()  # evitar que la caché de otros tests contamine
@@ -193,7 +195,7 @@ def test_config_disponibilidad_desde_erpnext():
 
 def test_redaccion_referencias_internas():
     """Las referencias internas (LEAD-, EV, TSK-, CONV-) se eliminan de respuestas y resultados."""
-    from app.application.agent.runtime import redactar_datos_internos
+    from app.application.agent.text import redactar_datos_internos
 
     texto = "Registrado con referencia CRM-LEAD-2026-00006 y evento EV00004 en la conversación CONV-abc123."
     limpio = redactar_datos_internos(texto, reemplazo="")
