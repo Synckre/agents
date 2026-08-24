@@ -71,8 +71,8 @@ Configura las siguientes variables en la sección **Environment Variables** del 
 | `ALLOWED_ORIGINS` | Orígenes CORS permitidos (separados por coma) | `https://control-ai.synckre.com,https://www.synckre.com` |
 | `POSTGRES_USER` | Usuario de PostgreSQL | `postgres` |
 | `POSTGRES_PASSWORD` | Contraseña de PostgreSQL | Generar contraseña segura |
-| `POSTGRES_DB` | Nombre de la base de datos | `langgraph_db` |
-| `POSTGRES_URI` | String de conexión (opcional si usas variables individuales) | `postgresql://postgres:pass@postgres:5432/langgraph_db` |
+| `POSTGRES_DB` | Nombre de la base de datos | `synckre_agent_db` (el default histórico `langgraph_db` sigue válido si ya está desplegado) |
+| `POSTGRES_URI` | String de conexión (opcional si usas variables individuales) | `postgresql://postgres:pass@postgres:5432/synckre_agent_db` |
 | `OLLAMA_BASE_URL` | URL del servicio Ollama RAG | `http://ollama:11434` |
 | `RESEND_API_KEY` | Clave de Resend para envío de emails (opcional) | `re_...` |
 

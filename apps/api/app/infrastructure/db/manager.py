@@ -32,6 +32,7 @@ class DatabaseManager:
         self.pool: Optional[AsyncConnectionPool] = None
         self._conversations = None
         self._telemetry = None
+        self._jobs = None
 
     @property
     def conversations(self):
@@ -48,6 +49,14 @@ class DatabaseManager:
 
             self._telemetry = TelemetryRepository(self)
         return self._telemetry
+
+    @property
+    def jobs(self):
+        if self._jobs is None:
+            from app.infrastructure.db.repos.jobs import JobsRepository
+
+            self._jobs = JobsRepository(self)
+        return self._jobs
 
     async def connect(self):
         if self.pool and not self.pool.closed:
@@ -253,13 +262,12 @@ class DatabaseManager:
         sql = """
         INSERT INTO synckre.tasks
             (id, conversation_id, type, goal, status, priority, context, result,
-             approval_required, approval_status, temporal_workflow_id, created_at, updated_at)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+             approval_required, approval_status, created_at, updated_at)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON CONFLICT (id) DO UPDATE SET
             status = EXCLUDED.status,
             result = EXCLUDED.result,
             approval_status = EXCLUDED.approval_status,
-            temporal_workflow_id = EXCLUDED.temporal_workflow_id,
             updated_at = EXCLUDED.updated_at;
         """
         async with self.pool.connection() as conn:
@@ -276,7 +284,6 @@ class DatabaseManager:
                     json.dumps(task.result) if task.result else None,
                     task.approval_required,
                     task.approval_status.value if task.approval_status and hasattr(task.approval_status, "value") else (task.approval_status or None),
-                    task.temporal_workflow_id,
                     task.created_at,
                     task.updated_at,
                 ),
@@ -288,7 +295,7 @@ class DatabaseManager:
             return None
         sql = """
         SELECT id, conversation_id, type, goal, status, priority, context, result,
-               approval_required, approval_status, temporal_workflow_id, created_at, updated_at
+               approval_required, approval_status, created_at, updated_at
         FROM synckre.tasks
         WHERE id = %s;
         """
@@ -309,9 +316,8 @@ class DatabaseManager:
                     result=row[7] if isinstance(row[7], dict) else (json.loads(row[7]) if row[7] else None),
                     approval_required=row[8],
                     approval_status=ApprovalStatus(row[9]) if row[9] else None,
-                    temporal_workflow_id=row[10],
-                    created_at=row[11],
-                    updated_at=row[12],
+                    created_at=row[10],
+                    updated_at=row[11],
                 )
 
     async def list_tasks(
@@ -323,7 +329,7 @@ class DatabaseManager:
             return []
         sql = """
         SELECT id, conversation_id, type, goal, status, priority, context, result,
-               approval_required, approval_status, temporal_workflow_id, created_at, updated_at
+               approval_required, approval_status, created_at, updated_at
         FROM synckre.tasks
         """
         params: Tuple = ()
@@ -348,9 +354,8 @@ class DatabaseManager:
                         result=r[7] if isinstance(r[7], dict) else (json.loads(r[7]) if r[7] else None),
                         approval_required=r[8],
                         approval_status=ApprovalStatus(r[9]) if r[9] else None,
-                        temporal_workflow_id=r[10],
-                        created_at=r[11],
-                        updated_at=r[12],
+                        created_at=r[10],
+                        updated_at=r[11],
                     )
                     for r in rows
                 ]

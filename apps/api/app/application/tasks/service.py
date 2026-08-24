@@ -11,7 +11,6 @@ import json
 import logging
 from datetime import datetime
 from typing import Any, Dict, List, Optional
-from app.application.agent.tools_registry import tool_registry
 from app.infrastructure.db.manager import db_manager
 from app.domain import (
     ApprovalModel,
@@ -56,7 +55,6 @@ class TaskService:
         task_id: str,
         status: TaskStatus,
         result: Optional[Dict[str, Any]] = None,
-        temporal_workflow_id: Optional[str] = None,
     ) -> Optional[TaskModel]:
         """Actualiza el estado de una Task."""
         task = await db_manager.get_task(task_id)
@@ -67,8 +65,6 @@ class TaskService:
         task.status = status
         if result:
             task.result = result
-        if temporal_workflow_id:
-            task.temporal_workflow_id = temporal_workflow_id
         task.updated_at = datetime.utcnow()
 
         await db_manager.create_task(task)  # ON CONFLICT DO UPDATE
@@ -112,35 +108,61 @@ class TaskService:
         execution_result = None
 
         if task:
-            if decision == "approve":
-                task.status = TaskStatus.COMPLETED
-                task.approval_status = ApprovalStatus.APPROVED
+            override_args = None
+            if edited_value:
+                try:
+                    override_args = json.loads(edited_value)
+                except Exception:
+                    override_args = None
 
-                # Si había una tool retenida en context, ejecutarla ahora autorizadamente
-                tool_name = task.context.get("tool_name")
-                tool_args = task.context.get("tool_args", {})
-                if tool_name:
-                    if edited_value:
-                        try:
-                            tool_args = json.loads(edited_value)
-                        except Exception:
-                            pass
-                    execution_result = await tool_registry.execute_tool(tool_name, **tool_args)
-                    task.result = execution_result
+            if task.type == "human_escalation":
+                if decision == "approve":
+                    task.status = TaskStatus.COMPLETED
+                    task.approval_status = ApprovalStatus.APPROVED
+                elif decision == "reject":
+                    task.status = TaskStatus.CANCELLED
+                    task.approval_status = ApprovalStatus.REJECTED
+                    task.result = {"cancelled_by": approved_by, "reason": reason}
+                else:
+                    task.status = TaskStatus.WAITING_USER
+                    task.approval_status = ApprovalStatus.CHANGES_REQUESTED
+                await db_manager.create_task(task)
+                await db_manager.update_conversation_status(task.conversation_id, "active")
+            elif decision in ("approve", "reject"):
+                from app.application.agent.runtime import agent_runtime
+                from app.application.jobs import JobKind
+                from app.application.services.job_scheduler import job_scheduler
 
-            elif decision == "reject":
-                task.status = TaskStatus.CANCELLED
-                task.approval_status = ApprovalStatus.REJECTED
-                task.result = {"cancelled_by": approved_by, "reason": reason}
+                await job_scheduler.enqueue(
+                    kind=JobKind.execute_approved_tool.value,
+                    payload={
+                        "approval_id": approval_id,
+                        "task_id": task.id,
+                        "conversation_id": task.conversation_id,
+                        "decision": decision,
+                        "reason": reason,
+                        "override_args": override_args,
+                    },
+                    idempotency_key=f"hitl:{approval_id}:{decision}",
+                )
+                resume = await agent_runtime.resume_from_approval(
+                    conversation_id=task.conversation_id,
+                    task=task,
+                    approved=decision == "approve",
+                    override_args=override_args,
+                    reason=reason,
+                )
+                execution_result = {"response": resume.response_text, "tool_calls": resume.tool_calls}
+                task.status = TaskStatus.COMPLETED if decision == "approve" else TaskStatus.CANCELLED
+                task.approval_status = (
+                    ApprovalStatus.APPROVED if decision == "approve" else ApprovalStatus.REJECTED
+                )
+                task.result = execution_result
+                await db_manager.create_task(task)
             else:
                 task.status = TaskStatus.WAITING_USER
                 task.approval_status = ApprovalStatus.CHANGES_REQUESTED
-
-            await db_manager.create_task(task)
-
-            # Si se cerró una escalación, la conversación vuelve a estar operativa para el agente
-            if task.type == "human_escalation":
-                await db_manager.update_conversation_status(task.conversation_id, "active")
+                await db_manager.create_task(task)
 
         # Audit Log
         await db_manager.log_audit(

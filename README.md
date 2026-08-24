@@ -29,8 +29,7 @@ Espera a que `synckre_api` esté healthy. Luego:
 | Qué | URL |
 |---|---|
 | API + docs | http://localhost:8000/docs |
-| UI de revisión | http://localhost:8000/review |
-| Temporal UI (solo lectura) | http://localhost:8088 |
+| Control Center | http://localhost:3000 |
 
 ### Probar la API
 
@@ -63,25 +62,15 @@ docker compose run --rm ingest --domain internal
 ## Desarrollo local (sin rebuild de la API)
 
 ```bash
-docker compose up -d postgres temporal-db temporal temporal-init temporal-ui ollama
+docker compose up -d postgres ollama
 
-cd AI
-source venv/bin/activate
-export PYTHONPATH="$(pwd):$(pwd)/../Temporal"
-
-# terminal 1
-WORKER_DOMAIN=public python -m temporal_app.workers.public
-
-# terminal 2
-env -u PUBLIC_API_KEY WORKER_DOMAIN=internal python -m temporal_app.workers.internal
-
-# terminal 3
-uvicorn main:app --reload --port 8000
+cd apps/api
+PYTHONPATH="$PWD" uvicorn app.interfaces.main:app --reload --port 8000
 ```
 
 Tests:
 
 ```bash
-cd AI && source venv/bin/activate
-PYTHONPATH="$(pwd):$(pwd)/../Temporal" pytest -q
+cd apps/api
+PYTHONPATH="$PWD" pytest -q
 ```

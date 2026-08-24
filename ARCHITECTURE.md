@@ -71,10 +71,12 @@ Cliente → Conversación → AgentRuntime (application/agent)
 
 | Componente | Ubicación | Descripción |
 |---|---|---|
-| AgentRuntime | `application/agent/runtime.py` | Loop conversacional del agente |
-| ToolRegistry | `application/agent/tools_registry.py` | Registro y ejecución de herramientas |
+| AgentRuntime | `application/agent/runtime.py` | Orquesta el turno: contexto, AgentPort, persistencia, HITL |
+| AgentPort / Pydantic AI | `infrastructure/agent/pydantic_runtime.py` | SDK del agente (tools tipadas, repair, HITL diferido) |
+| ToolRegistry | `application/agent/tools_registry.py` | Registro, ejecución, idempotencia |
 | Tools | `application/tools/*` | Calendario/ERP, CRM, Soporte, Documentos, Comunicación |
-| TaskService | `application/tasks/service.py` | Estados de tarea y aprobaciones HITL |
+| TaskService | `application/tasks/service.py` | Estados de tarea y aprobaciones HITL (reanuda el turno) |
+| JobScheduler | `application/services/job_scheduler.py` | Cola Postgres (`synckre.jobs`, SKIP LOCKED) |
 | ReminderScheduler | `application/services/reminder_scheduler.py` | Recordatorios automáticos de citas |
 | DB Manager | `infrastructure/db/manager.py` | Persistencia Postgres/pgvector |
 | ERPNext / Email / Calendar | `infrastructure/integrations/*` | Adaptadores externos |
@@ -82,4 +84,4 @@ Cliente → Conversación → AgentRuntime (application/agent)
 | API v1 | `interfaces/api/v1/*` | Endpoints REST |
 | Control Center | `apps/web` | Next.js + shadcn + view transitions |
 | Auth | Clerk (usuarios) + API key activa (Grafana/integraciones), sin roles en la key |
-| LLM | `infrastructure/llm/deepseek.py` vía `LlmPort` (el runtime no usa httpx) |
+| LLM | DeepSeek vía Pydantic AI (`OpenAIChatModel`); `LlmPort` queda para el runtime legacy |

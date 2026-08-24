@@ -35,6 +35,8 @@ from app.infrastructure.db.manager import db_manager
 from app.infrastructure.integrations.erp import erpnext_client
 from app.infrastructure.llm.deepseek import DeepseekLlm
 from app.application.agent.runtime import agent_runtime
+from app.application.services.job_handlers import register_job_handlers
+from app.application.services.job_scheduler import job_scheduler
 from app.application.services.reminder_scheduler import reminder_scheduler
 
 logging.basicConfig(
@@ -59,9 +61,12 @@ async def lifespan(app: FastAPI):
     register_all_tools()
     agent_runtime._llm = DeepseekLlm()
     db_task = asyncio.create_task(_connect_db_background())
+    register_job_handlers(job_scheduler)
     await reminder_scheduler.start()
+    await job_scheduler.start()
     yield
     db_task.cancel()
+    await job_scheduler.stop()
     await reminder_scheduler.stop()
     await db_manager.disconnect()
     await erpnext_client.aclose()

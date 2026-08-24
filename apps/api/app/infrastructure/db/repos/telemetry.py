@@ -90,6 +90,33 @@ class TelemetryRepository(BaseRepository):
         except Exception as e:
             logger.error("Error guardando tool execution: %s", e)
 
+    async def find_by_idempotency_key(self, key: str) -> Optional[Dict[str, Any]]:
+        if not key or not await self._ready():
+            return None
+        from psycopg.rows import dict_row
+
+        sql = """
+        SELECT output_data
+        FROM synckre.tool_executions
+        WHERE input_data->>'_idempotency_key' = %s AND status = 'success'
+        ORDER BY created_at DESC
+        LIMIT 1;
+        """
+        try:
+            async with self.pool.connection() as conn:
+                async with conn.cursor(row_factory=dict_row) as cur:
+                    await cur.execute(sql, (key,))
+                    row = await cur.fetchone()
+            if not row or row.get("output_data") is None:
+                return None
+            data = row["output_data"]
+            if isinstance(data, str):
+                data = json.loads(data)
+            return dict(data) if isinstance(data, dict) else None
+        except Exception as e:
+            logger.error("Error buscando ejecución idempotente: %s", e)
+            return None
+
     async def persist_run(
         self,
         *,

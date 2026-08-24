@@ -1,7 +1,7 @@
 """
 Configuración Global de Synckre Agent V2.
-Carga variables de entorno para DeepSeek (deepseek-v4-flash), PostgreSQL, Ollama RAG,
-Temporal y servicios de integración (Resend, Google Calendar, ERPNext).
+Carga variables de entorno para DeepSeek (deepseek-v4-flash), PostgreSQL, Ollama RAG
+y servicios de integración (Resend, Google Calendar, ERPNext).
 """
 
 import os
@@ -77,14 +77,13 @@ class Settings(BaseSettings):
     EMBEDDING_DIMENSION: int = 1024
     TOP_K: int = int(os.getenv("TOP_K", "4"))
 
-    # Temporal
-    TEMPORAL_ADDRESS: str = os.getenv("TEMPORAL_ADDRESS", "localhost:7233")
-    TEMPORAL_NAMESPACE: str = os.getenv("TEMPORAL_NAMESPACE", "synckre")
-    TASK_QUEUE: str = os.getenv("TASK_QUEUE", "synckre-tasks")
-
     # Recordatorios automáticos de citas
     APPOINTMENT_REMINDER_MINUTES: int = int(os.getenv("APPOINTMENT_REMINDER_MINUTES", "15"))
     REMINDER_POLL_SECONDS: int = int(os.getenv("REMINDER_POLL_SECONDS", "60"))
+
+    # Cola de jobs diferidos (retries, HITL resume)
+    JOB_POLL_SECONDS: int = int(os.getenv("JOB_POLL_SECONDS", "15"))
+    JOB_LOCK_TIMEOUT_SECONDS: int = int(os.getenv("JOB_LOCK_TIMEOUT_SECONDS", "300"))
 
     # External Integrations
     EMAIL_PROVIDER: str = os.getenv("EMAIL_PROVIDER", "resend")
@@ -109,6 +108,9 @@ class Settings(BaseSettings):
         "yes",
     }
 
+    # pydantic = AgentPort (Pydantic AI). legacy = loop JSON casero.
+    AGENT_RUNTIME: str = os.getenv("AGENT_RUNTIME", "pydantic")
+
     model_config = SettingsConfigDict(
         env_file=str(_REPO_ROOT / ".env"),
         env_file_encoding="utf-8",
@@ -131,6 +133,16 @@ class Settings(BaseSettings):
     def allow_heuristic_fallback(self) -> bool:
         """Heurística solo en dev/test. En producción el agente no inventa tools."""
         return not self.is_production
+
+    @property
+    def use_pydantic_runtime(self) -> bool:
+        return (self.AGENT_RUNTIME or "pydantic").strip().lower() in {
+            "pydantic",
+            "pydantic_ai",
+            "1",
+            "true",
+            "yes",
+        }
 
     @model_validator(mode="after")
     def _validate_deepseek_api_key(self):

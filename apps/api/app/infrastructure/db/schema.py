@@ -92,7 +92,6 @@ CREATE TABLE IF NOT EXISTS synckre.tasks (
     result JSONB DEFAULT NULL,
     approval_required BOOLEAN DEFAULT FALSE,
     approval_status VARCHAR(50) DEFAULT NULL,
-    temporal_workflow_id VARCHAR(255) DEFAULT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
@@ -181,6 +180,30 @@ CREATE TABLE IF NOT EXISTS synckre.audit_logs (
 );
 
 CREATE INDEX IF NOT EXISTS idx_audit_timestamp ON synckre.audit_logs(timestamp DESC);
+
+-- 8b. COLA DE TRABAJO DIFERIDO (retries, HITL resume, follow-ups)
+CREATE TABLE IF NOT EXISTS synckre.jobs (
+    id VARCHAR(255) PRIMARY KEY,
+    kind VARCHAR(100) NOT NULL,
+    run_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+    status VARCHAR(50) NOT NULL DEFAULT 'pending',
+    attempts INT NOT NULL DEFAULT 0,
+    max_attempts INT NOT NULL DEFAULT 5,
+    locked_at TIMESTAMP WITH TIME ZONE DEFAULT NULL,
+    idempotency_key VARCHAR(255),
+    last_error TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_jobs_idempotency_key
+    ON synckre.jobs(idempotency_key)
+    WHERE idempotency_key IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_jobs_due
+    ON synckre.jobs(run_at)
+    WHERE status IN ('pending', 'running');
 
 -- 9. RECORDATORIOS DE CITAS (emails automáticos: 1 día antes y minutos antes)
 CREATE TABLE IF NOT EXISTS synckre.appointment_reminders (

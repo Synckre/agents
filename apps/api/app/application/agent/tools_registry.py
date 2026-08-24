@@ -4,11 +4,14 @@ Permite registrar, inspeccionar y invocar herramientas con schemas, capacidades 
 niveles de riesgo, necesidad de aprobación y estrategias de idempotencia.
 """
 
+import hashlib
 import inspect
 import json
 import logging
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional
+
+from app.application.agent.results import ToolResult, ToolStatus
 
 logger = logging.getLogger("tool_registry")
 
@@ -99,7 +102,11 @@ class ToolRegistry:
     async def execute_tool(self, name: str, **kwargs) -> Dict[str, Any]:
         tool = self.get_tool(name)
         if not tool:
-            return {"status": "permanent_failure", "error": f"Herramienta '{name}' no existe en ToolRegistry."}
+            return ToolResult(
+                status=ToolStatus.permanent_failure,
+                message=f"Herramienta '{name}' no existe en ToolRegistry.",
+                error=f"Herramienta '{name}' no existe en ToolRegistry.",
+            ).to_dict()
 
         # 1) Validar y limpiar argumentos contra la firma real de la tool.
         #    Evita que un LLM o un humano envíe kwargs inventados y rompa la llamada con TypeError.
@@ -136,26 +143,72 @@ class ToolRegistry:
             if p.default is inspect.Parameter.empty and p.name not in kwargs
         ]
         if missing:
-            return {
-                "status": "permanent_failure",
-                "error": (
-                    f"Faltan parámetros requeridos para '{name}': {', '.join(missing)}. "
-                    f"Argumentos recibidos: {json.dumps(original_args)}"
-                ),
-            }
+            err = (
+                f"Faltan parámetros requeridos para '{name}': {', '.join(missing)}. "
+                f"Argumentos recibidos: {json.dumps(original_args)}"
+            )
+            return ToolResult(
+                status=ToolStatus.permanent_failure,
+                message=err,
+                error=err,
+            ).to_dict()
+
+        idem_key = None
+        if tool.idempotency_strategy and tool.idempotency_strategy != "none":
+            idem_key = _idempotency_key(name, original_args)
+            cached = await _lookup_idempotent(idem_key)
+            if cached is not None:
+                logger.info("Tool '%s': resultado idempotente reutilizado", name)
+                return cached
 
         try:
             if inspect.iscoroutinefunction(tool.func):
                 result = await tool.func(**kwargs)
             else:
                 result = tool.func(**kwargs)
-
-            if isinstance(result, dict) and "status" in result:
-                return result
-            return {"status": "success", "result": result}
+            normalized = ToolResult.from_raw(result).to_dict()
+            if idem_key and normalized.get("status") == "success":
+                await _store_idempotent(name, original_args, normalized, idem_key)
+            return normalized
         except Exception as exc:
             logger.error(f"Error ejecutando tool '{name}': {exc}", exc_info=True)
-            return {"status": "temporary_failure", "error": str(exc)}
+            return ToolResult(
+                status=ToolStatus.temporary_failure,
+                message=str(exc),
+                error=str(exc),
+            ).to_dict()
+
+
+def _idempotency_key(tool_name: str, args: Dict[str, Any]) -> str:
+    payload = json.dumps({"tool": tool_name, "args": args}, sort_keys=True, default=str)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+async def _lookup_idempotent(key: str) -> Dict[str, Any] | None:
+    try:
+        from app.infrastructure.db.manager import db_manager
+
+        return await db_manager.telemetry.find_by_idempotency_key(key)
+    except Exception:
+        return None
+
+
+async def _store_idempotent(
+    tool_name: str, args: Dict[str, Any], result: Dict[str, Any], key: str
+) -> None:
+    try:
+        from app.infrastructure.db.manager import db_manager
+
+        conv = args.get("conversation_id") or "idempotent"
+        await db_manager.telemetry.log_tool_execution(
+            conversation_id=str(conv),
+            tool_name=tool_name,
+            input_data={**args, "_idempotency_key": key},
+            output_data=result,
+            status="success",
+        )
+    except Exception:
+        logger.exception("No se pudo persistir clave de idempotencia para %s", tool_name)
 
 
 tool_registry = ToolRegistry()

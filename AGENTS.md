@@ -44,10 +44,11 @@ Regla de dependencia: **hacia adentro**. `domain` no importa nada del resto; `in
 
 - `domain/` — entidades puras (Pydantic) y enums: `ConversationModel`, `TaskModel`, `TaskStatus`, etc.
 - `application/` — casos de uso:
-  - `agent/runtime.py` — `AgentRuntime` conversacional inmediato (loop del agente).
+  - `agent/runtime.py` — `AgentRuntime` (turno: contexto + AgentPort + persistencia).
   - `agent/roles.py` & `policies.py` — roles y evaluación de capacidades y políticas.
   - `agent/tools_registry.py` & `tools/` — registro centralizado de herramientas (Calendar/ERPNext, CRM, Soporte, Documentos, Comunicación).
   - `tasks/service.py` — máquina de estados de tareas y aprobaciones Human-in-the-Loop.
+  - `services/job_scheduler.py` — cola de trabajo diferido en Postgres.
   - `services/reminder_scheduler.py` — recordatorios automáticos de citas (1 día y minutos antes).
 - `infrastructure/` — adaptadores:
   - `db/` — PostgreSQL/pgvector (manager, schema).

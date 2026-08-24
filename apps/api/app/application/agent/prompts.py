@@ -40,6 +40,7 @@ def build_system_prompt(
     tools: List[Dict[str, Any]],
     context: Dict[str, Any],
     tool_result: Optional[Dict[str, Any]] = None,
+    json_loop: bool = True,
 ) -> str:
     tools_desc = "\n".join([describe_tool(t) for t in tools])
     rag_text = "\n".join([f"[{c.get('filename')}] {c.get('content')}" for c in context.get("rag_context", [])])
@@ -116,16 +117,26 @@ def build_system_prompt(
             f"con viñetas '- '. NO lo ocultes ni digas que 'estás consultando' si ya tienes el dato. "
             f"En esta respuesta NO selecciones ninguna herramienta: tool_to_call siempre null.\n\n"
         )
+    if json_loop:
+        system_prompt += (
+            f"INSTRUCCIONES DE SALIDA:\n"
+            f"Responde estrictamente en formato JSON válido con las claves:\n"
+            f'{{"answer": "Texto de tu respuesta al usuario", "tool_to_call": "nombre_tool_o_null", "tool_args": {{}}}}\n'
+            f"Si decides llamar a una tool, 'tool_to_call' debe ser el nombre exacto de la tool autorizada "
+            f"y 'tool_args' debe incluir EXACTAMENTE los parámetros indicados en su firma "
+            f"(los marcados con '?' son opcionales). No inventes nombres de argumentos.\n"
+            f"Si el usuario pide hablar con una persona, un humano, un operador o atención humana, "
+            f"invoca la tool 'escalate_ticket' con una 'razon' descriptiva ('ticket_id' puede ir vacío).\n\n"
+        )
+    else:
+        system_prompt += (
+            "HERRAMIENTAS:\n"
+            "Usa las function tools disponibles. No inventes nombres de argumentos. "
+            "Si el usuario pide hablar con una persona, un humano, un operador o atención humana, "
+            "invoca escalate_ticket con una razon descriptiva (ticket_id puede ir vacío).\n\n"
+        )
     system_prompt += (
-        f"INSTRUCCIONES DE SALIDA:\n"
-        f"Responde estrictamente en formato JSON válido con las claves:\n"
-        f'{{"answer": "Texto de tu respuesta al usuario", "tool_to_call": "nombre_tool_o_null", "tool_args": {{}}}}\n'
-        f"Si decides llamar a una tool, 'tool_to_call' debe ser el nombre exacto de la tool autorizada "
-        f"y 'tool_args' debe incluir EXACTAMENTE los parámetros indicados en su firma "
-        f"(los marcados con '?' son opcionales). No inventes nombres de argumentos.\n"
-        f"Si el usuario pide hablar con una persona, un humano, un operador o atención humana, "
-        f"invoca la tool 'escalate_ticket' con una 'razon' descriptiva ('ticket_id' puede ir vacío).\n\n"
-        f"FORMATO DE RESPUESTA (OBLIGATORIO, en el campo 'answer'):\n"
+        f"FORMATO DE RESPUESTA (OBLIGATORIO, en el campo 'answer' si aplica):\n"
         f"- Escribe para un humano: texto fácil de leer, nunca un muro de texto.\n"
         f"- Usa párrafos cortos (2-3 frases) y EXACTAMENTE una línea en blanco entre párrafos "
         f"(nunca más de una). No pongas cada frase en una línea aparte.\n"
