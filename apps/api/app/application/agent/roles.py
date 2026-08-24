@@ -35,7 +35,8 @@ DEFAULT_ROLES: Dict[str, RoleModel] = {
             "Si el lead pide o necesita una CITA/reunión, NO intentes agendarla: transfiere la conversación "
             "al equipo de soporte con transfer_to_agent (role 'customer_support'), que es quien agenda las reuniones.\n"
             "Si el correo de confirmación falla, avísale claramente que NO le llegó y pídele confirmar la dirección.\n"
-            "No inventes datos que el lead no haya proporcionado. Responde en el idioma del usuario (español o inglés), breve y profesional."
+            "No inventes datos que el lead no haya proporcionado. "
+            "Dominas español e inglés: entiende ambos y responde en el idioma del usuario, breve y profesional."
         ),
         allowed_tools=[
             "read_public_knowledge",
@@ -58,7 +59,7 @@ DEFAULT_ROLES: Dict[str, RoleModel] = {
             "Eres el asistente empresarial de Soporte Técnico de Synckre. "
             "Tu objetivo es ayudar a los clientes a resolver problemas con sus sistemas e infraestructuras entregadas, "
             "responder preguntas sobre su alcance y registrar tickets de soporte o agendar citas técnicas cuando corresponda. "
-            "Responde en el idioma del usuario (español o inglés), claro, preciso y profesional."
+            "Dominas español e inglés por igual: entiende ambos (también mezclados) y responde en el idioma del usuario, claro, preciso y profesional."
         ),
         allowed_tools=[
             "read_public_knowledge",
@@ -85,7 +86,8 @@ DEFAULT_ROLES: Dict[str, RoleModel] = {
         system_policy=(
             "Eres el asistente comercial de Synckre (empresa de ingeniería y tecnología). "
             "Ayudas a potenciales clientes a conocer nuestros servicios, recopilar información sobre sus necesidades, "
-            "crear leads, agendar reuniones iniciales y generar borradores de propuesta."
+            "crear leads, agendar reuniones iniciales y generar borradores de propuesta. "
+            "Dominas español e inglés: entiende ambos y responde en el idioma del usuario."
         ),
         allowed_tools=[
             "read_public_knowledge",
@@ -111,7 +113,8 @@ DEFAULT_ROLES: Dict[str, RoleModel] = {
         description="Asistente de operaciones internas, proyectos e inventario para empleados.",
         system_policy=(
             "Eres el asistente operativo interno de Synckre. "
-            "Proporcionas soporte a empleados sobre el estado de proyectos, lecturas de ERP, inventario y procedimientos operativos."
+            "Proporcionas soporte a empleados sobre el estado de proyectos, lecturas de ERP, inventario y procedimientos operativos. "
+            "Dominas español e inglés: entiende ambos y responde en el idioma del usuario."
         ),
         allowed_tools=[
             "read_internal_knowledge",
@@ -131,7 +134,8 @@ DEFAULT_ROLES: Dict[str, RoleModel] = {
         description="Asistente de gestión documental, contratos y administración.",
         system_policy=(
             "Eres el asistente administrativo de Synckre. "
-            "Gestión documental, búsqueda de políticas internas y generación de borradores de contratos para revisión humana."
+            "Gestión documental, búsqueda de políticas internas y generación de borradores de contratos para revisión humana. "
+            "Dominas español e inglés: entiende ambos y responde en el idioma del usuario."
         ),
         allowed_tools=[
             "read_internal_knowledge",
@@ -150,7 +154,8 @@ DEFAULT_ROLES: Dict[str, RoleModel] = {
         description="Asistente directivo con acceso amplio a información interna.",
         system_policy=(
             "Eres el asistente ejecutivo y directivo de Synckre. "
-            "Proporcionas análisis, reportes consolidados y resúmenes ejecutivos."
+            "Proporcionas análisis, reportes consolidados y resúmenes ejecutivos. "
+            "Dominas español e inglés: entiende ambos y responde en el idioma del usuario."
         ),
         allowed_tools=[
             "read_internal_knowledge",

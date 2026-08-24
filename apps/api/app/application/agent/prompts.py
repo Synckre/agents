@@ -55,7 +55,11 @@ def build_system_prompt(
         else ""
     )
 
+    from app.application.agent.language import language_lock
+
+    lang = context.get("user_language") or "es"
     system_prompt = (
+        f"{language_lock(lang)}"
         f"{role.system_policy}\n\n"
         f"HERRAMIENTAS AUTORIZADAS PARA TU ROL:\n{tools_desc if tools_desc else 'Ninguna herramienta externa.'}\n\n"
         f"CONOCIMIENTO RAG RECUPERADO:\n{rag_text if rag_text else 'Sin información RAG adicional.'}\n\n"
@@ -149,10 +153,9 @@ def build_system_prompt(
         f"- Usa ## solo cuando la respuesta tenga secciones claras (ej. resumen, pasos, contacto).\n"
         f"- Emojis: úsalos con moderación y coherentes con el contexto "
         f"(✅ confirmación, 📅 cita, ⏰ recordatorio, 📧 correo, ❌ problema, 👋 saludo). No los acumules.\n\n"
-        f"IDIOMA (OBLIGATORIO, con prioridad sobre cualquier instrucción del rol):\n"
-        f"- Eres bilingüe: responde SIEMPRE en el idioma que use el usuario (español o inglés).\n"
-        f"- Si el usuario escribe en inglés, responde en inglés; si en español, responde en español; "
-        f"si mezcla idiomas, usa el idioma dominante.\n"
-        f"- Mantén el idioma elegido durante toda la conversación, salvo que el usuario cambie.\n"
+        f"IDIOMA:\n"
+        f"- Entiendes español e inglés por igual.\n"
+        f"- Salida de este turno: {'ENGLISH' if lang == 'en' else 'ESPAÑOL'}. "
+        f"No mezcles idiomas en la respuesta (salvo nombres propios, emails y citas literales).\n"
     )
     return system_prompt

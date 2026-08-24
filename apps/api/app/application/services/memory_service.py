@@ -11,71 +11,13 @@ from __future__ import annotations
 
 import asyncio
 import logging
-import re
 from typing import Any, Dict, Optional
 
+from app.application.agent.verbatim import extraer_datos
 from app.infrastructure.db.manager import db_manager
 from app.infrastructure.integrations.erp import erpnext_client
 
 logger = logging.getLogger("memory_service")
-
-_EMAIL = re.compile(r"[\w.+-]+@[\w-]+\.[\w.]+")
-_NAME = re.compile(
-    r"(?:soy|me llamo|mi nombre es|mi nombre:)\s*([A-Za-zÁÉÍÓÚÑáéíóúñ][\wÁÉÍÓÚÑáéíóúñ .'-]{1,40})",
-    re.IGNORECASE,
-)
-_COMPANY = re.compile(
-    r"(?:empresa|compañía|company|de la empresa)\s*(?:llamada|llamado|es|:|se llama)?\s*"
-    r"([A-Za-z0-9ÁÉÍÓÚÑáéíóúñ][\wÁÉÍÓÚÑáéíóúñ .&-]{1,40})",
-    re.IGNORECASE,
-)
-_PHONE = re.compile(r"(\+?\d[\d\s\-()]{7,}\d)")
-
-
-def _acotar_valor(valor: str, separadores: tuple[str, ...]) -> str:
-    """Recorta un valor extraído en el primer separador (punto, coma, ' y ', ' mi ', etc.)."""
-    for sep in separadores:
-        idx = valor.lower().find(sep)
-        if idx > 0:
-            valor = valor[:idx]
-    return valor.strip().rstrip(".")
-
-
-_SEP_NOMBRE = (",", ".", ";", " y ", " mi ", " me ")
-_SEP_EMPRESA = (",", ".", ";", " mi ", " me ", " mi tel")
-
-
-def extraer_datos(texto: str) -> Dict[str, str]:
-    """Extracción heurística de campos del cliente desde un texto libre.
-
-    El email se toma del ÚLTIMO email del mensaje: en una corrección
-    ("el correo no es X, es Y") el correcto es el último que escribe el usuario.
-    """
-    texto = (texto or "").strip()
-    datos: Dict[str, str] = {}
-
-    matches = list(_EMAIL.finditer(texto))
-    if matches:
-        datos["email"] = matches[-1].group(0).strip(".")
-
-    match = _NAME.search(texto)
-    if match:
-        nombre = _acotar_valor(match.group(1), _SEP_NOMBRE)
-        # Descartar si el "nombre" en realidad era un email capturado
-        if "@" not in nombre and nombre:
-            datos["name"] = nombre
-
-    match = _COMPANY.search(texto)
-    if match:
-        empresa = _acotar_valor(match.group(1), _SEP_EMPRESA)
-        if "@" not in empresa and empresa.lower() not in ("mi", "su", "tu", "la", "el"):
-            datos["company"] = empresa
-
-    match = _PHONE.search(texto)
-    if match:
-        datos["phone"] = match.group(1).strip()
-
-    return datos
 
 
 class MemoryService:
@@ -130,9 +72,19 @@ class MemoryService:
 
         No persiste campos maestros: los datos del contacto se leen de ERPNext.
         """
-        email = (tool_args or {}).get("email") or ""
+        email = (
+            (tool_args or {}).get("email")
+            or (tool_args or {}).get("email_nuevo")
+            or ""
+        )
         if not email or "@" not in email:
             return
+        conv = await db_manager.get_conversation(conversation_id)
+        meta_email = str((conv.metadata or {}).get("customer_email") or "") if conv else ""
+        from app.application.agent.verbatim import prefer_verbatim_email
+
+        if meta_email:
+            email = prefer_verbatim_email(email, meta_email)
         motivo = (tool_args or {}).get("mensaje") or (tool_args or {}).get("motivo") or ""
         summary = f"Última acción: {tool_name}"
         if motivo:

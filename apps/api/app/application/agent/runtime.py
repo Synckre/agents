@@ -18,6 +18,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
 from app.application.agent.heuristic import heuristic_plan
+from app.application.agent.language import detect_user_language, user_copy
 from app.application.agent.memory import MemoryRetriever
 from app.application.agent.policies import PolicyEngine, GuardrailsEngine
 from app.application.agent.ports import AgentPort, AgentUnavailable, LlmPort, LlmResult, TurnInput
@@ -298,11 +299,13 @@ class AgentRuntime:
         if is_injection:
             logger.warning(f"Guardrails interceptó inyección de prompt en conv {conversation_id}: {guard_msg}")
             stats.outcome = "guardrail_block"
+            stored = (conversation.metadata or {}).get("user_language") if conversation else None
+            lang, _ = detect_user_language(user_input, stored=stored)
             bot_msg = MessageModel(
                 id=f"MSG-{uuid.uuid4().hex[:8]}",
                 conversation_id=conversation_id,
                 sender="assistant",
-                content="Disculpa, tu mensaje contiene instrucciones no permitidas y ha sido bloqueado por razones de seguridad.",
+                content=user_copy("guardrail", lang),
             )
             await db_manager.add_message(bot_msg)
             return AgentRuntimeResult(
@@ -324,6 +327,22 @@ class AgentRuntime:
             allowed_knowledge_sources=role.allowed_knowledge_sources,
             user_query=user_input,
         )
+        stored_lang = None
+        if conversation and conversation.metadata:
+            stored_lang = conversation.metadata.get("user_language")
+        user_hist = [
+            m.get("content") or ""
+            for m in (context.get("messages") or [])
+            if m.get("sender") == "user"
+        ]
+        lang, confident = detect_user_language(
+            user_input, history=user_hist, stored=stored_lang
+        )
+        context["user_language"] = lang
+        if confident:
+            await db_manager.update_conversation_metadata(
+                conversation_id, {"user_language": lang}
+            )
 
         # 5. Obtener Herramientas Autorizadas
         all_registered = tool_registry.list_tools()
@@ -352,10 +371,7 @@ class AgentRuntime:
                         role_name=role.name,
                         user_id=user_id,
                         stats=stats,
-                        final_answer=(
-                            "No pude completar la respuesta en este momento. "
-                            "Inténtalo de nuevo en unos minutos."
-                        ),
+                        final_answer=user_copy("unavailable", context.get("user_language") or "es"),
                         executed_tool_calls=[],
                         created_task_dict=None,
                         requires_approval=False,
@@ -423,10 +439,8 @@ class AgentRuntime:
                     await db_manager.create_approval(approval)
                     created_task_dict = task.dict()
 
-                    final_answer = (
-                        f"La operación '{selected_tool_name}' requiere aprobación previa por parte de un supervisor humano. "
-                        f"Se ha registrado la Tarea ID: {task.id} en cola de revisión."
-                    )
+                    lang_now = (context or {}).get("user_language") or "es"
+                    final_answer = user_copy("hitl", lang_now).format(tool=selected_tool_name)
                     executed_tool_calls.append({"tool": selected_tool_name, "status": "waiting_human", "task_id": task.id})
                 else:
                     # Ejecutar Tool automáticamente (Level 1 o Safe Action Level 2)
@@ -483,7 +497,7 @@ class AgentRuntime:
                         conversation_id=conversation_id,
                         role_name=role.name,
                         tool_name=selected_tool_name,
-                        tool_args=tool_args,
+                        tool_args=exec_args,
                     )
 
                     # Registrar evento de auditoría detallado para la herramienta
@@ -570,7 +584,13 @@ class AgentRuntime:
                         base_msg = tool_result.get(
                             "message", "Tu solicitud ha sido escalada a un operador humano."
                         )
-                        final_answer = f"{base_msg} Un operador te atenderá en breve por esta conversación."
+                        lang_now = (context or {}).get("user_language") or "es"
+                        if lang_now == "en":
+                            final_answer = user_copy("escalated_suffix", "en")
+                        else:
+                            final_answer = (
+                                f"{base_msg} {user_copy('escalated_suffix', 'es')}"
+                            )
 
                     if not final_answer:
                         final_answer = tool_result.get("message", "Acción completada con éxito.")
@@ -649,10 +669,7 @@ class AgentRuntime:
         if stats and stats.outcome == "success":
             stats.outcome = "llm_fallback"
         return {
-            "answer": (
-                "No pude completar la respuesta en este momento. "
-                "Inténtalo de nuevo en unos minutos."
-            ),
+            "answer": user_copy("unavailable", "es"),
             "tool_to_call": None,
             "tool_args": {},
         }
@@ -854,10 +871,14 @@ class AgentRuntime:
                     created_task_dict = esc_task.model_dump() if hasattr(esc_task, "model_dump") else esc_task.dict()
                     await db_manager.update_conversation_status(conversation_id, "paused_human")
                     stats.outcome = "hitl"
-                    final_answer = (
-                        f"{tres.get('message', 'Tu solicitud ha sido escalada a un operador humano.')} "
-                        "Un operador te atenderá en breve por esta conversación."
-                    )
+                    lang_now = current_context.get("user_language") or "es"
+                    base_esc = tres.get("message") or ""
+                    if lang_now == "en":
+                        final_answer = user_copy("escalated_suffix", "en")
+                    else:
+                        final_answer = (
+                            f"{base_esc} {user_copy('escalated_suffix', 'es')}"
+                        ).strip()
 
             if output.deferred:
                 requires_approval = True
@@ -905,6 +926,7 @@ class AgentRuntime:
                 current_context = await MemoryRetriever.get_context(
                     conversation_id, current_role.name, current_role.allowed_knowledge_sources, user_input
                 )
+                current_context["user_language"] = context.get("user_language") or "es"
                 current_tools = PolicyEngine.filter_authorized_tools(current_role, all_registered)
                 continue
 
@@ -1025,7 +1047,8 @@ class AgentRuntime:
             )
 
         if not final_answer:
-            final_answer = "He procesado tu solicitud correctamente."
+            lang = (context or {}).get("user_language") or "es"
+            final_answer = user_copy("processed", lang)
 
         final_answer = self._normalizar_formato(final_answer)
         final_answer = limpiar_texto_final(final_answer)

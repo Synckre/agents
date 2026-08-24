@@ -17,6 +17,7 @@ from app.application.agent.ports import (
     TurnOutput,
 )
 from app.application.agent.prepare_args import prepare_tool_args
+from app.application.agent.language import looks_spanish, user_copy
 from app.application.agent.prompts import build_system_prompt
 from app.application.agent.roles import RoleModel
 from app.application.agent.text import redactar_datos_internos
@@ -35,6 +36,7 @@ class TurnDeps:
     conversation_id: str
     user_input: str
     role: RoleModel
+    user_language: str = "es"
     tool_calls: List[Dict[str, Any]] = field(default_factory=list)
     transfer_to: Optional[str] = None
     execute_tool: Optional[ExecuteTool] = None
@@ -137,7 +139,12 @@ def _wrap_tool(tool: ToolDefinition, *, requires_approval: bool):
             json.dumps(result, ensure_ascii=False)[:2000],
             reemplazo="[referencia interna]",
         )
-        return payload
+        lang = getattr(deps, "user_language", "es") or "es"
+        if lang == "en":
+            hint = "User language: ENGLISH. Any user-facing reply after this tool MUST be English."
+        else:
+            hint = "Idioma del usuario: ESPAÑOL. La respuesta visible tras esta tool debe ir en español."
+        return hint + "\n" + payload
 
     ctx_p = inspect.Parameter(
         "ctx",
@@ -291,6 +298,7 @@ class PydanticAgentRuntime:
             conversation_id=turn.conversation_id,
             user_input=turn.user_input,
             role=turn.role,
+            user_language=(turn.context or {}).get("user_language") or "es",
             execute_tool=self._execute_tool,
             enqueue_job=self._enqueue_job,
         )
@@ -314,9 +322,8 @@ class PydanticAgentRuntime:
                 tool_call_id=part.tool_call_id,
                 message_history=_dump_history(result.all_messages()),
             )
-            answer = (
-                f"La operación '{part.tool_name}' requiere aprobación previa por parte de un supervisor humano."
-            )
+            lang = deps.user_language or "es"
+            answer = user_copy("hitl", lang).format(tool=part.tool_name)
         elif isinstance(output, str):
             answer = output
             # TestModel a veces envuelve el resultado de tools en JSON
@@ -348,10 +355,18 @@ class PydanticAgentRuntime:
                     "request_information", "generate_document",
                 }
                 if deps.tool_calls[-1].get("tool") in simple and last.get("message"):
-                    if not answer or answer.startswith("{") or len(answer) < 8:
-                        answer = last["message"]
+                    raw_msg = last["message"]
+                    jsonish = (not answer) or answer.startswith("{") or len(answer) < 8
+                    if jsonish:
+                        # No servir un mensaje de tool en español a un usuario en inglés.
+                        if deps.user_language == "en" and looks_spanish(raw_msg):
+                            answer = answer if answer and not answer.startswith("{") else user_copy(
+                                "processed", "en"
+                            )
+                        else:
+                            answer = raw_msg
         return TurnOutput(
-            answer=answer or "He procesado tu solicitud.",
+            answer=answer or user_copy("processed", deps.user_language or "es"),
             tool_calls=list(deps.tool_calls),
             deferred=deferred,
             transfer_to=deps.transfer_to,
