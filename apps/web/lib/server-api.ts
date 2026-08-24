@@ -31,7 +31,11 @@ export const serverApi = {
   analyticsStats: () => serverFetch<Record<string, number>>('/api/v1/analytics/stats'),
   conversations: () => serverFetch<Array<{ id: string; role: string; updated_at: string }>>('/api/v1/conversations'),
   auditLogs: () => serverFetch<unknown[]>('/api/v1/audit'),
+  toolExecutions: (limit = 50) => serverFetch<unknown[]>(`/api/v1/audit/tool-executions?limit=${limit}`),
   tasks: () => serverFetch<unknown[]>('/api/v1/tasks'),
   knowledge: () => serverFetch<unknown[]>('/api/v1/knowledge'),
   apiKeys: () => serverFetch<unknown[]>('/api/v1/api-keys'),
+  roles: () => serverFetch<unknown[]>('/api/v1/roles'),
 };
+
+

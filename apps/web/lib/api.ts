@@ -138,6 +138,9 @@ export const api = {
   // Analytics
   getAnalyticsStats: () => fetchApi('/api/v1/analytics/stats'),
 
+  // Roles
+  listRoles: () => fetchApi('/api/v1/roles'),
+
   // API Keys
   listApiKeys: () => fetchApi('/api/v1/api-keys'),
   createApiKey: (name: string) =>
@@ -148,3 +151,4 @@ export const api = {
   revokeApiKey: (id: string) =>
     fetchApi(`/api/v1/api-keys/${id}`, { method: 'DELETE' }),
 };
+

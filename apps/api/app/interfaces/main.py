@@ -25,10 +25,12 @@ from app.interfaces.api.v1.knowledge import router as knowledge_router
 from app.interfaces.api.v1.tasks import router as tasks_router
 from app.interfaces.api.v1.analytics import router as analytics_router
 from app.interfaces.api.v1.api_keys import router as api_keys_router
+from app.interfaces.api.v1.roles import router as roles_router
 
 from app.application.agent.tools_register import register_all_tools
 
 register_all_tools()
+
 
 from app.infrastructure.config import settings
 from app.infrastructure.db.manager import db_manager
@@ -125,6 +127,8 @@ app.include_router(audit_router)
 app.include_router(analytics_router)
 app.include_router(calendar_router)
 app.include_router(api_keys_router)
+app.include_router(roles_router)
+
 
 # CORS como middleware más externo: cubre preflight OPTIONS y errores 4xx/5xx
 # de FastAPI. Un 503 de Traefik/Coolify (API caída) no pasa por aquí.

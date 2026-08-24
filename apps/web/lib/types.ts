@@ -62,8 +62,23 @@ export type ChatMessage = {
   tool_calls?: ToolCall[];
 };
 
+export type AgentRole = {
+  name: string;
+  title?: string;
+  description: string;
+  system_policy?: string;
+  allowed_tools: string[];
+  allowed_knowledge_sources?: string[];
+  autonomy_level?: number;
+  autonomy_label?: string;
+  approval_policy?: Record<string, unknown>;
+  metadata?: Record<string, unknown>;
+};
+
 export type TelemetryLog = {
   id?: string;
+  task_id?: string | null;
+  conversation_id?: string | null;
   tool_name: string;
   status: string;
   created_at: string;
@@ -71,6 +86,8 @@ export type TelemetryLog = {
   input_data?: Record<string, unknown>;
   output_data?: Record<string, unknown> | null;
 };
+
+
 
 export type DashboardStats = {
   erp_mutations: number;
