@@ -1014,5 +1014,9 @@ class DatabaseManager:
     async def get_observability_series(self):
         return await self.telemetry.series()
 
+    async def list_jobs(self, status: Optional[str] = None, limit: int = 50):
+        return await self.jobs.list_jobs(status=status, limit=limit)
+
 
 db_manager = DatabaseManager()
+

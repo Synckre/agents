@@ -22,7 +22,6 @@ def _base(contenido: str, lang: str = "es") -> str:
 <div style="font-family: -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif; max-width: 560px; margin: 0 auto; padding: 24px; background: #ffffff; color: #18181b; border-radius: 12px;">
   <div style="border-bottom: 2px solid #e4e4e7; padding-bottom: 16px; margin-bottom: 20px;">
     <span style="font-size: 20px; font-weight: 700; color: #18181b;">{COMPANY}</span>
-    <span style="color: #71717a; font-size: 13px;"> · Agent Runtime</span>
   </div>
   {contenido}
   <div style="border-top: 1px solid #e4e4e7; margin-top: 24px; padding-top: 14px; color: #71717a; font-size: 12px;">

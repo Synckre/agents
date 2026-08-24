@@ -1,7 +1,19 @@
+import React from 'react';
 import { serverApi } from '@/lib/server-api';
 import { WorkflowsView } from './workflows-view';
+import type { BackgroundJob, WorkflowTask } from '@/lib/types';
 
 export default async function WorkflowsPage() {
-  const tasks = ((await serverApi.tasks()) || []) as Parameters<typeof WorkflowsView>[0]['initialTasks'];
-  return <WorkflowsView initialTasks={tasks} />;
+  const [tasks, jobs] = await Promise.all([
+    serverApi.tasks().catch(() => []),
+    serverApi.jobs().catch(() => []),
+  ]);
+
+  return (
+    <WorkflowsView
+      initialTasks={(tasks as WorkflowTask[]) || []}
+      initialJobs={(jobs as BackgroundJob[]) || []}
+    />
+  );
 }
+

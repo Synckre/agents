@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { api } from '@/lib/api';
 import { errorMessage } from '@/lib/error-message';
-import type { WorkflowTask } from '@/lib/types';
+import type { BackgroundJob, WorkflowTask } from '@/lib/types';
 
 export type WorkflowPendingAction = {
   kind: 'escalation' | 'hitl';
@@ -15,8 +15,15 @@ function paramsFromTask(task: WorkflowTask | null): string {
   return JSON.stringify(task.context.tool_args || {}, null, 2);
 }
 
-export function useWorkflows(initialTasks: WorkflowTask[]) {
+export function useWorkflows({
+  initialTasks,
+  initialJobs,
+}: {
+  initialTasks: WorkflowTask[];
+  initialJobs?: BackgroundJob[];
+}) {
   const [tasks, setTasks] = useState<WorkflowTask[]>(initialTasks);
+  const [jobs, setJobs] = useState<BackgroundJob[]>(initialJobs || []);
   const [selectedTask, setSelectedTask] = useState<WorkflowTask | null>(initialTasks[0] ?? null);
   const [loading, setLoading] = useState(false);
   const [approvalReason, setApprovalReason] = useState('');
@@ -28,19 +35,30 @@ export function useWorkflows(initialTasks: WorkflowTask[]) {
   const refresh = async () => {
     setLoading(true);
     try {
-      const data = await api.listTasks();
-      setTasks(data || []);
-      if (data && data.length > 0) {
-        if (!selectedTask) {
-          setSelectedTask(data[0]);
-          setEditedParams(paramsFromTask(data[0]));
-        } else {
-          const updated = data.find((t: WorkflowTask) => t.id === selectedTask.id);
-          if (updated) setSelectedTask(updated);
+      const [tasksRes, jobsRes] = await Promise.allSettled([
+        api.listTasks(),
+        api.listJobs(),
+      ]);
+
+      if (tasksRes.status === 'fulfilled' && tasksRes.value) {
+        const data = tasksRes.value;
+        setTasks(data);
+        if (data.length > 0) {
+          if (!selectedTask) {
+            setSelectedTask(data[0]);
+            setEditedParams(paramsFromTask(data[0]));
+          } else {
+            const updated = data.find((t: WorkflowTask) => t.id === selectedTask.id);
+            if (updated) setSelectedTask(updated);
+          }
         }
       }
+
+      if (jobsRes.status === 'fulfilled' && jobsRes.value) {
+        setJobs(jobsRes.value);
+      }
     } catch (err) {
-      console.error('Error cargando workflows:', err);
+      console.error('Error cargando workflows y jobs:', err);
     } finally {
       setLoading(false);
     }
@@ -106,6 +124,7 @@ export function useWorkflows(initialTasks: WorkflowTask[]) {
 
   return {
     tasks,
+    jobs,
     selectedTask,
     loading,
     approvalReason,
@@ -126,3 +145,4 @@ export function useWorkflows(initialTasks: WorkflowTask[]) {
     stepState,
   };
 }
+

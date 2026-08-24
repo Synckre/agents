@@ -35,14 +35,16 @@ import {
   CalendarDays,
   CircleDot,
   AlertTriangle,
+  Layers,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useWorkflows } from '@/hooks/useWorkflows';
-import type { WorkflowTask } from '@/lib/types';
+import type { BackgroundJob, WorkflowTask } from '@/lib/types';
 
 const STATUS_META: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline' | 'success' | 'warning' | 'info' }> = {
   waiting_human: { label: 'En espera de humano', variant: 'warning' },
   completed: { label: 'Completada', variant: 'success' },
+  done: { label: 'Completado', variant: 'success' },
   failed: { label: 'Fallida', variant: 'destructive' },
   cancelled: { label: 'Cancelada', variant: 'destructive' },
   pending: { label: 'Pendiente', variant: 'outline' },
@@ -82,9 +84,19 @@ const ACTION_COPY = {
   },
 } as const;
 
-export function WorkflowsView({ initialTasks }: { initialTasks: WorkflowTask[] }) {
+export function WorkflowsView({
+  initialTasks,
+  initialJobs,
+}: {
+  initialTasks: WorkflowTask[];
+  initialJobs?: BackgroundJob[];
+}) {
+  const [activeTab, setActiveTab] = React.useState<'tasks' | 'jobs'>('tasks');
+  const [expandedJobId, setExpandedJobId] = React.useState<string | null>(null);
+
   const {
     tasks,
+    jobs,
     selectedTask,
     loading,
     approvalReason,
@@ -103,23 +115,23 @@ export function WorkflowsView({ initialTasks }: { initialTasks: WorkflowTask[] }
     isEscalation,
     waitingHuman,
     stepState,
-  } = useWorkflows(initialTasks);
+  } = useWorkflows({ initialTasks, initialJobs });
 
   return (
     <PageTransition>
       <div className="flex flex-col gap-6">
         <PageHeader
           icon={GitBranch}
-          title="Workflows y tareas"
-          description="Seguimiento de procesos, tareas y aprobaciones del Agent Runtime."
+          title="Workflows, Jobs y Schedulers"
+          description="Seguimiento en tiempo real de tareas, trabajos en segundo plano, correos y cronjobs del sistema."
           right={
             <Button
               variant="outline"
               size="icon"
               onClick={refresh}
               disabled={loading}
-              title="Refrescar workflows"
-              aria-label="Refrescar workflows"
+              title="Refrescar datos"
+              aria-label="Refrescar datos"
               className="size-9 rounded-lg border-border"
             >
               <RefreshCw className={cn("size-4", loading && 'animate-spin')} />
@@ -127,8 +139,199 @@ export function WorkflowsView({ initialTasks }: { initialTasks: WorkflowTask[] }
           }
         />
 
-        {/* Responsive Grid / Stack */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Header de Pestañas */}
+        <div className="flex border-b border-border">
+          <button
+            onClick={() => setActiveTab('tasks')}
+            className={cn(
+              'flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition -mb-px',
+              activeTab === 'tasks'
+                ? 'border-primary text-primary font-semibold'
+                : 'border-transparent text-muted-foreground hover:text-foreground'
+            )}
+          >
+            <GitBranch className="size-4" />
+            Tareas y Aprobaciones HITL
+            {tasks.length > 0 && (
+              <Badge variant="secondary" className="font-mono text-[11px] ml-1">
+                {tasks.length}
+              </Badge>
+            )}
+          </button>
+          <button
+            onClick={() => setActiveTab('jobs')}
+            className={cn(
+              'flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 transition -mb-px',
+              activeTab === 'jobs'
+                ? 'border-primary text-primary font-semibold'
+                : 'border-transparent text-muted-foreground hover:text-foreground'
+            )}
+          >
+            <Clock className="size-4" />
+            Trabajos en Segundo Plano y Cronjobs (Jobs & Schedulers)
+            {jobs.length > 0 && (
+              <Badge variant="outline" className="font-mono text-[11px] ml-1">
+                {jobs.length}
+              </Badge>
+            )}
+          </button>
+        </div>
+
+        {activeTab === 'jobs' ? (
+          <div className="space-y-6">
+            {/* Estado de Schedulers y Workers */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <Card className="p-4 flex items-center gap-3">
+                <span className="size-9 rounded-lg bg-emerald-500/10 border border-emerald-500/20 text-emerald-500 flex items-center justify-center shrink-0">
+                  <CheckCircle2 className="size-5" />
+                </span>
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground">Motor de Jobs (Postgres)</p>
+                  <p className="text-sm font-bold text-foreground">Activo (`SKIP LOCKED`)</p>
+                </div>
+              </Card>
+
+              <Card className="p-4 flex items-center gap-3">
+                <span className="size-9 rounded-lg bg-blue-500/10 border border-blue-500/20 text-blue-500 flex items-center justify-center shrink-0">
+                  <Clock className="size-5" />
+                </span>
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground">Cronjob Recordatorios</p>
+                  <p className="text-sm font-bold text-foreground">Activo (Cada 60s)</p>
+                </div>
+              </Card>
+
+              <Card className="p-4 flex items-center gap-3">
+                <span className="size-9 rounded-lg bg-purple-500/10 border border-purple-500/20 text-purple-500 flex items-center justify-center shrink-0">
+                  <CalendarDays className="size-5" />
+                </span>
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground">Jobs en Cola</p>
+                  <p className="text-sm font-bold text-foreground font-mono">{jobs.length} registrados</p>
+                </div>
+              </Card>
+            </div>
+
+            {/* Tabla / Lista de Jobs */}
+            <Card>
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Clock className="size-4 text-primary" />
+                  Cola de Trabajos y Envíos Programados (Postgres Jobs)
+                </CardTitle>
+                <CardDescription>
+                  Registro de ejecuciones diferidas (mails de seguimiento, recordatorios de citas y cronjobs).
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="p-5">
+                {loading && jobs.length === 0 ? (
+                  <div className="space-y-3">
+                    <Skeleton className="h-16 rounded-xl" />
+                    <Skeleton className="h-16 rounded-xl" />
+                  </div>
+                ) : jobs.length === 0 ? (
+                  <div className="text-center p-8 border border-dashed rounded-xl bg-muted/20">
+                    <p className="text-sm text-muted-foreground">
+                      No hay trabajos diferidos o cronjobs programados en este momento.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {jobs.map((job) => {
+                      const isExpanded = expandedJobId === job.id;
+                      const st = statusLabel(job.status);
+                      const isDone = job.status === 'done' || job.status === 'completed';
+
+                      return (
+                        <div
+                          key={job.id}
+                          className="border border-border rounded-xl bg-card transition hover:border-primary/30 overflow-hidden"
+                        >
+                          <div
+                            onClick={() => setExpandedJobId(isExpanded ? null : job.id)}
+                            className="p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 cursor-pointer select-none"
+                          >
+                            <div className="flex items-center gap-3 min-w-0">
+                              <span
+                                className={cn(
+                                  'size-9 rounded-lg flex items-center justify-center shrink-0 font-mono text-xs font-semibold',
+                                  isDone
+                                    ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20'
+                                    : job.status === 'failed'
+                                    ? 'bg-destructive/10 text-destructive border border-destructive/20'
+                                    : 'bg-amber-500/10 text-amber-500 border border-amber-500/20'
+                                )}
+                              >
+                                {isDone ? (
+                                  <CheckCircle2 className="size-4" />
+                                ) : job.status === 'failed' ? (
+                                  <XCircle className="size-4" />
+                                ) : (
+                                  <Clock className="size-4" />
+                                )}
+                              </span>
+
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <code className="font-mono text-sm font-semibold text-foreground bg-muted border border-border rounded px-2 py-0.5">
+                                    {job.kind}
+                                  </code>
+                                  <Badge variant={st.variant} className="text-[10px]">
+                                    {st.label}
+                                  </Badge>
+                                </div>
+                                <div className="flex items-center gap-3 text-xs text-muted-foreground mt-1 flex-wrap">
+                                  <span>ID: {job.id.slice(0, 8)}...</span>
+                                  {job.run_at && (
+                                    <span>Programado: {new Date(job.run_at).toLocaleString('es-ES')}</span>
+                                  )}
+                                  <span>Intentos: {job.attempts}/{job.max_attempts}</span>
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center justify-between sm:justify-end gap-3 shrink-0">
+                              <Button variant="ghost" size="sm" className="h-7 w-7 p-0">
+                                {isExpanded ? <ChevronDown className="size-4 rotate-180 transition" /> : <ChevronDown className="size-4 transition" />}
+                              </Button>
+                            </div>
+                          </div>
+
+                          {/* Acordeón Payload & Error */}
+                          {isExpanded && (
+                            <div className="p-4 border-t border-border bg-muted/40 text-xs space-y-3">
+                              {job.last_error && (
+                                <div className="p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive">
+                                  <p className="font-semibold mb-1 flex items-center gap-1.5">
+                                    <AlertTriangle className="size-3.5" />
+                                    Último error registrado:
+                                  </p>
+                                  <p className="font-mono text-[11px] whitespace-pre-wrap">{job.last_error}</p>
+                                </div>
+                              )}
+
+                              <div>
+                                <p className="font-mono text-[11px] font-semibold text-muted-foreground uppercase tracking-wide mb-1 flex items-center gap-1.5">
+                                  <Layers className="size-3.5" />
+                                  Payload del Job (Datos del evento / correo)
+                                </p>
+                                <pre className="p-3 bg-zinc-950 text-zinc-200 font-mono text-[11px] rounded-lg overflow-x-auto border border-zinc-800">
+                                  {JSON.stringify(job.payload || {}, null, 2)}
+                                </pre>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        ) : (
+          /* Pestaña 1: Tareas y Workflows */
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Lista */}
           <Card className="lg:col-span-1">
             <CardHeader className="border-b border-border pb-4">
@@ -427,6 +630,7 @@ export function WorkflowsView({ initialTasks }: { initialTasks: WorkflowTask[] }
             )}
           </div>
         </div>
+      )}
 
         {/* Modal de confirmación de acciones */}
         <AlertDialog

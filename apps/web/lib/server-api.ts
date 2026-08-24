@@ -36,6 +36,8 @@ export const serverApi = {
   knowledge: () => serverFetch<unknown[]>('/api/v1/knowledge'),
   apiKeys: () => serverFetch<unknown[]>('/api/v1/api-keys'),
   roles: () => serverFetch<unknown[]>('/api/v1/roles'),
+  jobs: () => serverFetch<unknown[]>('/api/v1/jobs'),
 };
+
 
 

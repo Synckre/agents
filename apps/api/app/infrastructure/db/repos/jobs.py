@@ -199,6 +199,36 @@ class JobsRepository(BaseRepository):
     async def mark_failed(self, job_id: str, error: str) -> None:
         await self._set_status(job_id, JobStatus.failed.value, error=error)
 
+    async def list_jobs(self, status: Optional[str] = None, limit: int = 50) -> list[Job]:
+        if not await self._ready():
+            return []
+        from psycopg.rows import dict_row
+
+        if status:
+            sql = """
+            SELECT id, kind, run_at, payload, status, attempts, max_attempts,
+                   locked_at, idempotency_key, last_error, created_at, updated_at
+            FROM synckre.jobs
+            WHERE status = %s
+            ORDER BY created_at DESC
+            LIMIT %s;
+            """
+            params = (status, limit)
+        else:
+            sql = """
+            SELECT id, kind, run_at, payload, status, attempts, max_attempts,
+                   locked_at, idempotency_key, last_error, created_at, updated_at
+            FROM synckre.jobs
+            ORDER BY created_at DESC
+            LIMIT %s;
+            """
+            params = (limit,)
+        async with self.pool.connection() as conn:
+            async with conn.cursor(row_factory=dict_row) as cur:
+                await cur.execute(sql, params)
+                rows = await cur.fetchall()
+        return [_row_to_job(dict(r)) for r in rows]
+
     async def _set_status(self, job_id: str, status: str, error: Optional[str]) -> None:
         if not await self._ready():
             return
@@ -212,3 +242,4 @@ class JobsRepository(BaseRepository):
                 sql,
                 (status, (error[:1000] if error else None), datetime.now(timezone.utc), job_id),
             )
+

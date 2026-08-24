@@ -26,6 +26,8 @@ from app.interfaces.api.v1.tasks import router as tasks_router
 from app.interfaces.api.v1.analytics import router as analytics_router
 from app.interfaces.api.v1.api_keys import router as api_keys_router
 from app.interfaces.api.v1.roles import router as roles_router
+from app.interfaces.api.v1.jobs import router as jobs_router
+
 
 from app.application.agent.tools_register import register_all_tools
 
@@ -128,6 +130,8 @@ app.include_router(analytics_router)
 app.include_router(calendar_router)
 app.include_router(api_keys_router)
 app.include_router(roles_router)
+app.include_router(jobs_router)
+
 
 
 # CORS como middleware más externo: cubre preflight OPTIONS y errores 4xx/5xx

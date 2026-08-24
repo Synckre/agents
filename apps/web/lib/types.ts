@@ -87,6 +87,21 @@ export type TelemetryLog = {
   output_data?: Record<string, unknown> | null;
 };
 
+export type BackgroundJob = {
+  id: string;
+  kind: string;
+  status: string;
+  run_at?: string | null;
+  payload?: Record<string, unknown>;
+  attempts: number;
+  max_attempts: number;
+  idempotency_key?: string | null;
+  last_error?: string | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
+
+
 
 
 export type DashboardStats = {

@@ -138,10 +138,16 @@ export const api = {
   // Analytics
   getAnalyticsStats: () => fetchApi('/api/v1/analytics/stats'),
 
-  // Roles
+  // Roles & Jobs
   listRoles: () => fetchApi('/api/v1/roles'),
+  listJobs: (status?: string, limit = 50) => {
+    const params = new URLSearchParams({ limit: String(limit) });
+    if (status) params.set('status', status);
+    return fetchApi(`/api/v1/jobs?${params.toString()}`);
+  },
 
   // API Keys
+
   listApiKeys: () => fetchApi('/api/v1/api-keys'),
   createApiKey: (name: string) =>
     fetchApi('/api/v1/api-keys', {
