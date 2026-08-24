@@ -14,8 +14,20 @@ from app.infrastructure.integrations.email_templates import email_verificacion_r
 from app.infrastructure.integrations.erp import erpnext_client, guardar_lead
 
 
-async def _enviar_verificacion(nombre: str, email: str, entidad: str, referencia: str) -> str:
-    asunto, html, texto = email_verificacion_registro(nombre, email, entidad, referencia)
+async def _enviar_verificacion(
+    nombre: str,
+    email: str,
+    entidad: str,
+    referencia: str,
+    conversation_id: Optional[str] = None,
+    user_text: str = "",
+) -> str:
+    from app.application.agent.company_scope import idioma_contacto
+
+    lang = await idioma_contacto(conversation_id, user_text)
+    asunto, html, texto = email_verificacion_registro(
+        nombre, email, entidad, referencia, lang=lang
+    )
     try:
         return await enviar_correo_html(email, asunto, html, texto)
     except Exception as exc:
@@ -167,7 +179,14 @@ async def update_lead(
     # Reenviar el correo de confirmación a la dirección corregida (el anterior no llegó)
     det = await erpnext_client.get_lead(email_nuevo)
     nombre = (det.get("lead", {}).get("lead_name") or "").strip() if det.get("ok") else ""
-    email_result = await _enviar_verificacion(nombre or "Cliente", email_nuevo, "lead", lead_id)
+    email_result = await _enviar_verificacion(
+        nombre or "Cliente",
+        email_nuevo,
+        "lead",
+        lead_id,
+        conversation_id=conversation_id,
+        user_text=email_nuevo,
+    )
     email_ok = "enviado" in (email_result or "").lower()
 
     if email_ok:
@@ -194,7 +213,8 @@ async def update_lead(
     name="add_lead_note",
     description=(
         "Guarda una NOTA en el Lead del cliente en ERPNext (lo que necesita, lo conversado, "
-        "detalles de su proyecto). Acepta el email del lead y la nota a guardar."
+        "detalles de su proyecto). Redacta la nota en ESPAÑOL (CRM interno). "
+        "Acepta el email del lead y la nota a guardar."
     ),
     required_capabilities=["crm.write"],
     risk_level=1,
@@ -213,7 +233,9 @@ async def add_lead_note(email: str, nota: str) -> Dict[str, Any]:
             "status": "permanent_failure",
             "message": f"No encontré un lead con el email {email}. Regístralo primero con create_lead.",
         }
-    res = await erpnext_client.add_lead_note(lead_id, nota)
+    from app.application.agent.company_scope import nota_interna_erp
+
+    res = await erpnext_client.add_lead_note(lead_id, nota_interna_erp(nota))
     if not res.get("ok"):
         return {"status": "temporary_failure", "message": f"No se pudo guardar la nota en el lead: {res.get('error')}"}
     return {"status": "success", "message": f"Nota guardada en el lead de {email}."}
@@ -237,6 +259,9 @@ async def create_lead(
     if not (nombre or "").strip() or "@" not in (email or ""):
         return {"status": "permanent_failure", "message": "Faltan nombre o email válido. Pídelos; no los inventes."}
 
+    from app.application.agent.company_scope import idioma_contacto
+
+    idioma = await idioma_contacto(conversation_id, mensaje)
     resultado = await guardar_lead(
         nombre=nombre,
         email=email,
@@ -244,6 +269,7 @@ async def create_lead(
         telefono=telefono,
         mensaje=mensaje,
         origen="web",
+        idioma_cliente=idioma,
     )
     # Guardar el erp_id en la metadata de la conversación: es la clave para corregir
     # el lead POR ID aunque el email de la conversación cambie después.
@@ -251,8 +277,19 @@ async def create_lead(
     if conversation_id and erp_id:
         await db_manager.update_conversation_metadata(conversation_id, {"lead_erp_id": erp_id})
     referencia = erp_id or f"LEAD-{email}"
-    email_result = await _enviar_verificacion(nombre, email, "lead", referencia)
+    email_result = await _enviar_verificacion(
+        nombre, email, "lead", referencia, conversation_id=conversation_id, user_text=mensaje
+    )
     email_ok = "enviado" in (email_result or "").lower()
+    if conversation_id:
+        from app.application.follow_up import schedule_lead_follow_up
+
+        await schedule_lead_follow_up(
+            conversation_id=conversation_id,
+            nombre=nombre,
+            email=email,
+            lang=idioma,
+        )
 
     if email_ok:
         mensaje = (

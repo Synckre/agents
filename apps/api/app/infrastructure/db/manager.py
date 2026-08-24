@@ -246,6 +246,9 @@ class DatabaseManager:
     async def update_conversation_metadata(self, conversation_id: str, metadata: Dict[str, Any]) -> bool:
         return await self.conversations.update_metadata(conversation_id, metadata)
 
+    async def get_conversation_by_resume_token(self, token: str):
+        return await self.conversations.get_by_resume_token(token)
+
     async def add_message(self, msg: MessageModel) -> MessageModel:
         return await self.conversations.add_message(msg)
 

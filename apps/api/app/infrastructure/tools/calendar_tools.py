@@ -200,13 +200,24 @@ async def _registrar_lead_erpnext(nombre: str, email: str) -> str:
         return ""
 
 
-async def _confirmar_cita(cliente_nombre: str, cliente_email: str, inicio: datetime, motivo: str, referencia: str) -> str:
-    """Envía el correo de confirmación de la cita."""
+async def _confirmar_cita(
+    cliente_nombre: str,
+    cliente_email: str,
+    inicio: datetime,
+    motivo: str,
+    referencia: str,
+    conversation_id: str | None = None,
+) -> str:
+    """Envía el correo de confirmación de la cita en el idioma del cliente."""
+    from app.application.agent.company_scope import idioma_contacto
+
+    lang = await idioma_contacto(conversation_id, motivo)
     asunto, html, texto = email_confirmacion_cita(
         nombre=cliente_nombre,
         fecha_iso=inicio.isoformat(),
         motivo=motivo,
         referencia=referencia,
+        lang=lang,
     )
     try:
         return await enviar_correo_html(cliente_email, asunto, html, texto)
@@ -306,27 +317,42 @@ async def create_event(
     fin = inicio + timedelta(minutes=duracion)
 
     # 2) Crear el evento en ERPNext (control de agenda de la compañía)
+    from app.application.agent.company_scope import idioma_contacto, resumen_interno_erp
+
+    idioma = await idioma_contacto(conversation_id, motivo)
     evento = await erpnext_client.create_event(
-        subject=f"Cita {nombre} — {motivo[:60]}",
+        subject=f"Cita {nombre}",
         starts_on=inicio.isoformat(),
         ends_on=fin.isoformat(),
-        description=motivo,
+        description=resumen_interno_erp(
+            nombre=nombre,
+            email=email,
+            consulta=motivo,
+            origen="cita",
+            idioma_cliente=idioma,
+        ),
         client_name=nombre,
         client_email=email,
     )
 
-    if not evento["ok"]:
-        # Fallback a Google Calendar si estaba configurado previamente
-        res = await agendar_cita(nombre, email, motivo, inicio.isoformat())
-        if "No pude crear el evento" in res or "rechazó" in res or "Falta" in res:
-            return {"status": "temporary_failure", "message": f"{evento['error']} {res}".strip()}
+    gcal = await agendar_cita(nombre, email, motivo, inicio.isoformat())
+    meet_url = ""
+    if "Meet:" in (gcal or ""):
+        meet_url = gcal.split("Meet:")[-1].strip().split()[0]
+    gcal_ok = bool(gcal) and not any(
+        s in gcal for s in ("No pude crear el evento", "rechazó", "no respondió", "Falta")
+    )
+
+    if not evento["ok"] and not gcal_ok:
+        return {"status": "temporary_failure", "message": f"{evento.get('error') or ''} {gcal}".strip()}
+    if evento["ok"]:
+        event_id = evento["event_id"] or f"EVT-{uuid.uuid4().hex[:10]}"
+        referencia = event_id
+        agenda_origen = "erpnext+google" if gcal_ok else "erpnext"
+    else:
         event_id = f"GCAL-{uuid.uuid4().hex[:10]}"
         referencia = event_id
         agenda_origen = "google_calendar"
-    else:
-        event_id = evento["event_id"] or f"EVT-{uuid.uuid4().hex[:10]}"
-        referencia = event_id
-        agenda_origen = "erpnext"
 
     # 3) Programar recordatorios automáticos (1 día antes + minutos antes)
     await _programar_recordatorios(
@@ -342,8 +368,23 @@ async def create_event(
     lead_id = await _registrar_lead_erpnext(nombre, email)
 
     # 4) Correo de confirmación al cliente
-    email_result = await _confirmar_cita(nombre, email, inicio, motivo, referencia)
+    email_result = await _confirmar_cita(
+        nombre, email, inicio, motivo, referencia, conversation_id=conversation_id
+    )
     email_ok = "enviado" in (email_result or "").lower()
+    try:
+        from app.infrastructure.integrations.email import enviar_correo_html
+        from app.infrastructure.integrations.email_templates import email_cita_interna
+        from app.infrastructure.config import settings as _settings
+
+        interno = (_settings.EMAIL_INTERNAL_TO or "").split(",")[0].strip()
+        if interno and "@" in interno:
+            asu, html, txt = email_cita_interna(
+                nombre, email, inicio.isoformat(), motivo, meet_url=meet_url
+            )
+            await enviar_correo_html(interno, asu, html, txt)
+    except Exception:
+        pass
 
     base_msg = (
         f"Cita agendada el {inicio.strftime('%d/%m/%Y a las %H:%M')} (ref. {referencia}). "

@@ -3,11 +3,24 @@
 import React from 'react';
 import Link from 'next/link';
 import { ViewTransition } from 'react';
-import { Plus, ArrowRight, MessageSquare, Trash2, AlertTriangle, MessageCircle } from 'lucide-react';
+import { Plus, ArrowRight, MessageSquare, Trash2, AlertTriangle, MessageCircle, Search, X } from 'lucide-react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
+import {
+  Select,
+  SelectTrigger,
+  SelectValue,
+  SelectPortal,
+  SelectBackdrop,
+  SelectPositioner,
+  SelectPopup,
+  SelectList,
+  SelectItem,
+  SelectItemText,
+} from '@/components/ui/select';
 import {
   AlertDialog,
   AlertDialogPortal,
@@ -26,7 +39,14 @@ import type { ConversationSummary } from '@/lib/types';
 export function ConversationsView({ initialConversations }: { initialConversations: ConversationSummary[] }) {
   const {
     conversations,
+    filteredConversations,
     loading,
+    searchQuery,
+    setSearchQuery,
+    roleFilter,
+    setRoleFilter,
+    roles,
+    clearFilters,
     deletingId,
     deleteTarget,
     setDeleteTarget,
@@ -34,6 +54,8 @@ export function ConversationsView({ initialConversations }: { initialConversatio
     confirmDelete,
     closeDeleteDialog,
   } = useConversationsList(initialConversations);
+
+  const hasActiveFilters = searchQuery.trim() !== '' || roleFilter !== 'all';
 
   return (
     <PageTransition>
@@ -43,8 +65,12 @@ export function ConversationsView({ initialConversations }: { initialConversatio
           title={
             <>
               Conversaciones
-              {!loading && conversations.length > 0 && (
-                <Badge variant="secondary" className="font-mono">{conversations.length}</Badge>
+              {!loading && (
+                <Badge variant="secondary" className="font-mono">
+                  {hasActiveFilters
+                    ? `${filteredConversations.length} de ${conversations.length}`
+                    : conversations.length}
+                </Badge>
               )}
             </>
           }
@@ -56,6 +82,65 @@ export function ConversationsView({ initialConversations }: { initialConversatio
             </Button>
           }
         />
+
+        {/* Barra de Filtros y Búsqueda */}
+        {!loading && conversations.length > 0 && (
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3">
+            <div className="relative flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+              <Input
+                type="text"
+                placeholder="Buscar por ID de conversación o rol..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-9 pr-8"
+              />
+              {searchQuery && (
+                <button
+                  onClick={() => setSearchQuery('')}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground p-1 rounded-md transition"
+                  title="Limpiar búsqueda"
+                >
+                  <X className="size-3.5" />
+                </button>
+              )}
+            </div>
+
+            {roles.length > 0 && (
+              <div className="w-full sm:w-56">
+                <Select value={roleFilter} onValueChange={(val) => setRoleFilter(val || 'all')}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Filtrar por rol" />
+                  </SelectTrigger>
+                  <SelectPortal>
+                    <SelectBackdrop />
+                    <SelectPositioner>
+                      <SelectPopup>
+                        <SelectList>
+                          <SelectItem value="all">
+                            <SelectItemText>Todos los roles</SelectItemText>
+                          </SelectItem>
+                          {roles.map((r) => (
+                            <SelectItem key={r} value={r}>
+                              <SelectItemText>{r.replace(/_/g, ' ')}</SelectItemText>
+                            </SelectItem>
+                          ))}
+                        </SelectList>
+                      </SelectPopup>
+                    </SelectPositioner>
+                  </SelectPortal>
+                </Select>
+              </div>
+            )}
+
+            {hasActiveFilters && (
+              <Button variant="ghost" size="sm" onClick={clearFilters} className="gap-1 px-3 self-start sm:self-auto">
+                <X className="size-3.5" />
+                Limpiar filtros
+              </Button>
+            )}
+          </div>
+        )}
 
         {loading ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
@@ -69,9 +154,19 @@ export function ConversationsView({ initialConversations }: { initialConversatio
               No existen conversaciones aún. Haz clic en &quot;Nueva conversación&quot; para probar el runtime.
             </p>
           </Card>
+        ) : filteredConversations.length === 0 ? (
+          <Card className="text-center p-12 border-dashed">
+            <p className="text-muted-foreground mb-3">
+              No se encontraron conversaciones que coincidan con los filtros aplicados.
+            </p>
+            <Button variant="outline" size="sm" onClick={clearFilters} className="gap-1.5">
+              <X className="size-3.5" />
+              Limpiar filtros de búsqueda
+            </Button>
+          </Card>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-            {conversations.map((conv) => (
+            {filteredConversations.map((conv) => (
               <Link
                 key={conv.id}
                 href={`/conversations/${conv.id}`}

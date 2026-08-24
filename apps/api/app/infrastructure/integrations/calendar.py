@@ -6,6 +6,7 @@ import json
 import logging
 import re
 from datetime import datetime, timedelta, timezone
+import uuid
 from pathlib import Path
 
 import httpx
@@ -56,6 +57,19 @@ def _token() -> str | None:
         return None
 
 
+def _attendees(email: str) -> list[dict]:
+    seen = set()
+    out = []
+    extras = [e.strip() for e in (settings.EMAIL_INTERNAL_TO or "").split(",") if "@" in e]
+    for addr in [email.strip(), *extras]:
+        key = addr.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append({"email": addr})
+    return out
+
+
 async def agendar_cita(nombre: str, email: str, motivo: str, inicio_iso: str = "") -> str:
     error = _datos_completos(nombre, email, motivo)
     if error:
@@ -82,16 +96,23 @@ async def agendar_cita(nombre: str, email: str, motivo: str, inicio_iso: str = "
     fin = inicio + timedelta(minutes=45)
 
     payload = {
-        "summary": f"Synckre · {motivo.strip()[:80]}",
+        "summary": f"Synckre · {nombre.strip()}",
         "description": f"Cliente: {nombre.strip()} <{email.strip()}>\nMotivo: {motivo.strip()}",
         "start": {"dateTime": inicio.isoformat(), "timeZone": "UTC"},
         "end": {"dateTime": fin.isoformat(), "timeZone": "UTC"},
-        "attendees": [{"email": email.strip()}],
+        "attendees": _attendees(email),
+        "conferenceData": {
+            "createRequest": {
+                "requestId": uuid.uuid4().hex,
+                "conferenceSolutionKey": {"type": "hangoutsMeet"},
+            }
+        },
     }
     try:
         async with httpx.AsyncClient(timeout=20) as client:
             resp = await client.post(
                 f"https://www.googleapis.com/calendar/v3/calendars/{calendar_id}/events",
+                params={"conferenceDataVersion": 1, "sendUpdates": "all"},
                 headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json"},
                 json=payload,
             )
@@ -107,5 +128,15 @@ async def agendar_cita(nombre: str, email: str, motivo: str, inicio_iso: str = "
             f"Google Calendar rechazó el evento ({resp.status_code}). "
             "No confirmes la cita como agendada."
         )
-    html = resp.json().get("htmlLink") or ""
-    return f"Cita creada en Google Calendar para {nombre.strip()} ({email.strip()}). {html}".strip()
+    body = resp.json() or {}
+    html = body.get("htmlLink") or ""
+    meet = ""
+    entry = body.get("conferenceData") or {}
+    for ep in entry.get("entryPoints") or []:
+        if ep.get("entryPointType") == "video" and ep.get("uri"):
+            meet = ep["uri"]
+            break
+    extra = f" Meet: {meet}" if meet else ""
+    return (
+        f"Cita creada en Google Calendar para {nombre.strip()} ({email.strip()}). {html}{extra}"
+    ).strip()

@@ -26,6 +26,8 @@ async def start_chat(
         conv = await db_manager.conversations.get(conv_id)
         if not conv:
             conv_id = None
+        elif (conv.metadata or {}).get("resume_token") and conv.role == "sales_assistant":
+            active_role = "sales_assistant"
     if not conv_id:
         conv_id = f"CONV-{uuid.uuid4().hex[:8]}"
         await db_manager.conversations.create(
@@ -37,6 +39,33 @@ async def start_chat(
                 role=active_role,
             )
         )
+    if getattr(principal, "is_anonymous", False):
+        from app.application.agent.company_scope import idioma_contacto
+        from app.application.public_limits import CHAT_MAX_TURNS
+
+        try:
+            existentes = await db_manager.get_messages(conv_id, limit=200)
+        except Exception:
+            existentes = []
+        user_turns = sum(1 for m in existentes if getattr(m, "sender", None) == "user")
+        if user_turns >= CHAT_MAX_TURNS:
+            lang = await idioma_contacto(conv_id, message)
+            reply = (
+                "We've reached the limit for this chat. A Synckre specialist can follow up — "
+                "or start a new request later."
+                if lang == "en"
+                else (
+                    "Hemos llegado al límite de este chat. Un especialista de Synckre puede continuar, "
+                    "o puedes iniciar otra consulta más adelante."
+                )
+            )
+            return {
+                "response": reply,
+                "conversation_id": conv_id,
+                "role": active_role,
+                "tool_calls": [],
+                "limited": True,
+            }
     result = await agent_runtime.execute(
         conversation_id=conv_id,
         user_input=message,
@@ -112,3 +141,28 @@ async def send_message(
         customer_id=customer_id,
     )
     return result.to_dict()
+
+
+async def continue_by_token(*, token: str, message: str) -> Dict[str, Any]:
+    """Retoma el hilo público con el cualificador (sales_assistant)."""
+    from app.application.public_limits import FOLLOW_UP_ROLE
+
+    token = (token or "").strip()
+    if not token:
+        return {"error": "invalid_token"}
+    conv = await db_manager.get_conversation_by_resume_token(token)
+    if not conv:
+        return {"error": "invalid_token"}
+    if conv.status == "paused_human":
+        return {"error": "paused", "conversation_id": conv.id}
+    if conv.role != FOLLOW_UP_ROLE:
+        await db_manager.update_conversation_role(conv.id, FOLLOW_UP_ROLE)
+    result = await agent_runtime.execute(
+        conversation_id=conv.id,
+        user_input=message,
+        role_name=FOLLOW_UP_ROLE,
+    )
+    payload = result.to_dict()
+    payload["conversation_id"] = conv.id
+    payload["role"] = FOLLOW_UP_ROLE
+    return payload

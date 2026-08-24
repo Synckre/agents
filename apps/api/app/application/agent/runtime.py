@@ -348,6 +348,22 @@ class AgentRuntime:
         all_registered = tool_registry.list_tools()
         authorized_tools = PolicyEngine.filter_authorized_tools(role, all_registered)
 
+        from app.application.agent.company_scope import is_off_topic, off_topic_reply
+
+        if is_off_topic(user_input):
+            stats.outcome = "out_of_scope"
+            return await self._finalize_turn(
+                conversation_id=conversation_id,
+                role_name=role.name,
+                user_id=user_id,
+                stats=stats,
+                final_answer=off_topic_reply(lang),
+                executed_tool_calls=[],
+                created_task_dict=None,
+                requires_approval=False,
+                context=context,
+            )
+
         if self._should_use_pydantic():
             try:
                 return await self._run_with_port(

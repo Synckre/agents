@@ -125,6 +125,33 @@ class ConversationRepository(BaseRepository):
                 await cur.execute(sql, (role, datetime.utcnow(), conversation_id))
                 return (cur.rowcount or 0) > 0
 
+    async def get_by_resume_token(self, token: str) -> Optional[ConversationModel]:
+        if not token or not await self._ready():
+            return None
+        sql = """
+        SELECT id, channel, user_id, customer_id, role, status, created_at, updated_at, metadata
+        FROM synckre.conversations
+        WHERE metadata->>'resume_token' = %s
+        LIMIT 1;
+        """
+        async with self.pool.connection() as conn:
+            async with conn.cursor() as cur:
+                await cur.execute(sql, (token,))
+                row = await cur.fetchone()
+        if not row:
+            return None
+        return ConversationModel(
+            id=row[0],
+            channel=row[1],
+            user_id=row[2],
+            customer_id=row[3],
+            role=row[4],
+            status=row[5],
+            created_at=row[6],
+            updated_at=row[7],
+            metadata=row[8] if isinstance(row[8], dict) else json.loads(row[8] or "{}"),
+        )
+
     async def update_metadata(self, conversation_id: str, metadata: Dict[str, Any]) -> bool:
         if not await self._ready():
             return False

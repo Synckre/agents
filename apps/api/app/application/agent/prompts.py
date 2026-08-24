@@ -55,11 +55,13 @@ def build_system_prompt(
         else ""
     )
 
+    from app.application.agent.company_scope import company_scope_prompt
     from app.application.agent.language import language_lock
 
     lang = context.get("user_language") or "es"
     system_prompt = (
         f"{language_lock(lang)}"
+        f"{company_scope_prompt()}"
         f"{role.system_policy}\n\n"
         f"HERRAMIENTAS AUTORIZADAS PARA TU ROL:\n{tools_desc if tools_desc else 'Ninguna herramienta externa.'}\n\n"
         f"CONOCIMIENTO RAG RECUPERADO:\n{rag_text if rag_text else 'Sin información RAG adicional.'}\n\n"
@@ -88,8 +90,8 @@ def build_system_prompt(
             f"NOTAS EN EL CRM:\n"
             f"- Cuando el cliente indique qué necesita, su situación o detalles relevantes "
             f"(servicio de interés, contexto del proyecto, urgencia), guárdalo como nota del "
-            f"lead con add_lead_note (usa el email del cliente). Las notas se guardan en el "
-            f"Lead del CRM.\n\n"
+            f"lead con add_lead_note (usa el email del cliente). Las notas del CRM van SIEMPRE "
+            f"en español (interno), aunque el chat con el cliente sea en inglés.\n\n"
         )
     if any(t["name"] in ("create_lead", "update_lead") for t in tools):
         system_prompt += (

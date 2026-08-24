@@ -63,7 +63,14 @@ async def handle_retry_tool(job: Job) -> None:
         raise RuntimeError((result or {}).get("error") or "temporary_failure")
 
 
+async def handle_follow_up(job: Job) -> None:
+    from app.application.follow_up import send_follow_up_email
+
+    await send_follow_up_email(job.payload or {})
+
+
 def register_job_handlers(scheduler) -> None:
     scheduler.register(JobKind.execute_approved_tool.value, handle_execute_approved_tool)
     scheduler.register(JobKind.resume_turn.value, handle_resume_turn)
     scheduler.register(JobKind.retry_tool.value, handle_retry_tool)
+    scheduler.register(JobKind.follow_up.value, handle_follow_up)

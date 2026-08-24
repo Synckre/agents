@@ -53,12 +53,18 @@ class ReminderScheduler:
                 for rem in due:
                     try:
                         tipo = rem["reminder_type"]
+                        from app.application.agent.company_scope import idioma_contacto
+
+                        lang = await idioma_contacto(
+                            rem.get("conversation_id"), rem.get("motivo") or ""
+                        )
                         asunto, html, texto = email_recordatorio_cita(
                             nombre=rem["client_name"] or "Cliente",
                             fecha_iso=rem["appointment_at"] or "",
                             motivo=rem.get("motivo") or "",
                             referencia=rem["event_id"] or "",
                             tipo="minutos" if tipo == "minutes_before" else "recordatorio",
+                            lang=lang,
                         )
                         res = await enviar_correo_html(rem["client_email"], asunto, html, texto)
                         ok = "enviado" in res.lower()

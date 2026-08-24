@@ -550,6 +550,7 @@ async def guardar_lead(
     mensaje: str = "",
     origen: str = "web",
     workflow_id: str = "",
+    idioma_cliente: str = "",
 ) -> dict[str, Any]:
     """Persiste el lead en Postgres y, si ERPNext está configurado, lo crea como Lead.
 
@@ -557,6 +558,17 @@ async def guardar_lead(
     respuesta: es la clave para corregir el lead por su ID sin depender de coincidencias
     de email.
     """
+    from app.application.agent.company_scope import resumen_interno_erp
+
+    nota_erp = resumen_interno_erp(
+        nombre=nombre,
+        email=email,
+        empresa=empresa,
+        telefono=telefono,
+        consulta=mensaje,
+        origen=origen,
+        idioma_cliente=idioma_cliente,
+    )
     erp_id = ""
     destino = "local"
     res = await erpnext_client.create_lead(
@@ -564,7 +576,7 @@ async def guardar_lead(
         email_id=email,
         company_name=empresa,
         mobile_no=telefono,
-        notes=mensaje,
+        notes=nota_erp,
         source=origen or "Website",
     )
     if res.get("ok"):
@@ -579,7 +591,7 @@ async def guardar_lead(
         email=email,
         empresa=empresa,
         telefono=telefono,
-        mensaje=mensaje,
+        mensaje=nota_erp,
         origen=origen,
         workflow_id=workflow_id,
         erp_id=erp_id,

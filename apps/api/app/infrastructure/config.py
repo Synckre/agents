@@ -111,6 +111,9 @@ class Settings(BaseSettings):
     # pydantic = AgentPort (Pydantic AI). legacy = loop JSON casero.
     AGENT_RUNTIME: str = os.getenv("AGENT_RUNTIME", "pydantic")
 
+    # URL del site público (enlace del mail de seguimiento). Un solo override opcional.
+    PUBLIC_SITE_URL: str = os.getenv("PUBLIC_SITE_URL", "https://www.synckre.com")
+
     model_config = SettingsConfigDict(
         env_file=str(_REPO_ROOT / ".env"),
         env_file_encoding="utf-8",

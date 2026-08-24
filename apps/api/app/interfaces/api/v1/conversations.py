@@ -13,6 +13,7 @@ from app.application.conversations import send_message as send_message_uc
 from app.application.conversations import start_chat
 from app.application.conversations import catalog
 from app.application.services.event_bus import event_bus
+from app.application.public_limits import CHAT_PER_DAY, CHAT_PER_HOUR, CHAT_PER_MINUTE
 from app.interfaces.limiter import limiter
 from app.interfaces.security import (
     Principal,
@@ -33,7 +34,9 @@ class UnifiedChatRequest(BaseModel):
 
 
 @router.post("/chat", summary="Chat directo (Crea conversación si no existe e invoca AgentRuntime)")
-@limiter.limit("30/minute")
+@limiter.limit(f"{CHAT_PER_MINUTE}/minute")
+@limiter.limit(f"{CHAT_PER_HOUR}/hour")
+@limiter.limit(f"{CHAT_PER_DAY}/day")
 async def chat_direct(request: Request, req: UnifiedChatRequest, principal: Principal = Depends(require_any_key)):
     return await start_chat(
         message=req.message,
