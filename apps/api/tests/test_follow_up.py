@@ -20,14 +20,17 @@ def test_continue_url_uses_site_and_token():
 
 
 def test_continue_email_bilingual():
-    _, h_es, _ = email_continuar_conversacion("Ana", "https://www.synckre.com/continue?token=x", lang="es")
+    _, h_es, _, tpl_es, _ = email_continuar_conversacion("Ana", "https://www.synckre.com/continue?token=x", lang="es")
     assert "Continuar la conversación" in h_es
-    _, h_en, _ = email_continuar_conversacion("Ana", "https://www.synckre.com/continue?token=x", lang="en")
+    assert tpl_es == "email_continuar_conversacion"
+    _, h_en, _, tpl_en, _ = email_continuar_conversacion("Ana", "https://www.synckre.com/continue?token=x", lang="en")
     assert "Continue the conversation" in h_en
+    assert tpl_en == "email_continuar_conversacion_en"
 
 
 def test_internal_meeting_email_is_spanish():
-    _, html, _ = email_cita_interna("Ana", "ana@x.com", "2026-08-20T10:00:00+00:00", "Kickoff", meet_url="https://meet.google.com/abc")
+    _, html, _, tpl, _ = email_cita_interna("Ana", "ana@x.com", "2026-08-20T10:00:00+00:00", "Kickoff", meet_url="https://meet.google.com/abc")
     assert "Cita comercial" in html
     assert "ana@x.com" in html
     assert "meet.google.com/abc" in html
+    assert tpl == "email_cita_interna"

@@ -58,7 +58,7 @@ class ReminderScheduler:
                         lang = await idioma_contacto(
                             rem.get("conversation_id"), rem.get("motivo") or ""
                         )
-                        asunto, html, texto = email_recordatorio_cita(
+                        asunto, html, texto, template_id, variables = email_recordatorio_cita(
                             nombre=rem["client_name"] or "Cliente",
                             fecha_iso=rem["appointment_at"] or "",
                             motivo=rem.get("motivo") or "",
@@ -66,7 +66,14 @@ class ReminderScheduler:
                             tipo="minutos" if tipo == "minutes_before" else "recordatorio",
                             lang=lang,
                         )
-                        res = await enviar_correo_html(rem["client_email"], asunto, html, texto)
+                        res = await enviar_correo_html(
+                            rem["client_email"],
+                            asunto,
+                            html,
+                            texto,
+                            template_id=template_id,
+                            variables=variables,
+                        )
                         ok = "enviado" in res.lower()
                         await db_manager.mark_reminder_sent(rem["id"], error=None if ok else res, conn=conn)
                         if not ok:

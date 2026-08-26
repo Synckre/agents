@@ -212,7 +212,7 @@ async def _confirmar_cita(
     from app.application.agent.company_scope import idioma_contacto
 
     lang = await idioma_contacto(conversation_id, motivo)
-    asunto, html, texto = email_confirmacion_cita(
+    asunto, html, texto, template_id, variables = email_confirmacion_cita(
         nombre=cliente_nombre,
         fecha_iso=inicio.isoformat(),
         motivo=motivo,
@@ -220,7 +220,7 @@ async def _confirmar_cita(
         lang=lang,
     )
     try:
-        return await enviar_correo_html(cliente_email, asunto, html, texto)
+        return await enviar_correo_html(cliente_email, asunto, html, texto, template_id=template_id, variables=variables)
     except Exception as exc:
         return f"Envío fallido: {exc}"
 
@@ -379,10 +379,12 @@ async def create_event(
 
         interno = (_settings.EMAIL_INTERNAL_TO or "").split(",")[0].strip()
         if interno and "@" in interno:
-            asu, html, txt = email_cita_interna(
+            asu, html, txt, tpl_id, vars_dict = email_cita_interna(
                 nombre, email, inicio.isoformat(), motivo, meet_url=meet_url
             )
-            await enviar_correo_html(interno, asu, html, txt)
+            await enviar_correo_html(
+                interno, asu, html, txt, template_id=tpl_id, variables=vars_dict
+            )
     except Exception:
         pass
 

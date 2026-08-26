@@ -70,8 +70,10 @@ async def send_follow_up_email(payload: dict) -> None:
     if not token or "@" not in email:
         return
     enlace = continue_url(token)
-    asunto, html, texto = email_continuar_conversacion(nombre, enlace, lang=lang)
-    await enviar_correo_html(email, asunto, html, texto)
+    asunto, html, texto, template_id, variables = email_continuar_conversacion(nombre, enlace, lang=lang)
+    await enviar_correo_html(
+        email, asunto, html, texto, template_id=template_id, variables=variables
+    )
     if conversation_id:
         await db_manager.update_conversation_role(conversation_id, FOLLOW_UP_ROLE)
         await db_manager.update_conversation_metadata(

@@ -99,24 +99,29 @@ def test_human_approval_policy():
 
 
 def test_email_templates_build():
-    """Las plantillas de correo generan asunto, HTML y texto sin errores."""
+    """Las plantillas de correo generan asunto, HTML, texto, template_id y variables para Resend."""
     from app.infrastructure.integrations.email_templates import (
         email_confirmacion_cita,
         email_recordatorio_cita,
         email_verificacion_registro,
     )
 
-    a1, h1, t1 = email_confirmacion_cita("Juan", "2026-08-20T10:00:00+00:00", "Revisión", "EVT-1")
+    a1, h1, t1, tpl1, vars1 = email_confirmacion_cita("Juan", "2026-08-20T10:00:00+00:00", "Revisión", "EVT-1")
     assert "Juan" in h1 and t1
     assert "EVT-1" not in h1 and "Referencia" not in h1  # sin datos internos
+    assert tpl1 == "email_confirmacion_cita"
+    assert vars1["nombre"] == "Juan"
 
-    a2, h2, t2 = email_verificacion_registro("Ana", "ana@x.com", "lead", "LEAD-1")
+    a2, h2, t2, tpl2, vars2 = email_verificacion_registro("Ana", "ana@x.com", "lead", "LEAD-1", lang="en")
     # Sin datos internos: ni referencia ni "tipo de registro"; solo acuse de recibo
-    assert "recibido" in h2 and "Ana" in h2
-    assert "LEAD-1" not in h2 and "lead" not in h2
+    assert "recibido" not in h2.lower() and "Ana" in h2
+    assert tpl2 == "email_verificacion_registro_en"
+    assert vars2["email"] == "ana@x.com"
 
-    a3, h3, t3 = email_recordatorio_cita("Luis", "2026-08-20T10:00:00+00:00", "", "EVT-2", "minutos")
+    a3, h3, t3, tpl3, vars3 = email_recordatorio_cita("Luis", "2026-08-20T10:00:00+00:00", "", "EVT-2", "minutos")
     assert t3 and "EVT-2" not in h3 and "Referencia" not in h3
+    assert tpl3 == "email_recordatorio_cita"
+    assert vars3["tipo"] == "minutos"
 
 
 def test_create_event_without_integrations_graceful():

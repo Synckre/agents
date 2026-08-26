@@ -50,11 +50,14 @@ def test_prompt_includes_company_scope():
 
 
 def test_email_templates_follow_client_language():
-    a_es, h_es, t_es = email_verificacion_registro("Ana", "ana@x.com", "lead", "L1", lang="es")
+    a_es, h_es, t_es, tpl_es, _ = email_verificacion_registro("Ana", "ana@x.com", "lead", "L1", lang="es")
     assert "Hemos recibido" in h_es
-    a_en, h_en, t_en = email_verificacion_registro("Ana", "ana@x.com", "lead", "L1", lang="en")
+    assert tpl_es == "email_verificacion_registro"
+    a_en, h_en, t_en, tpl_en, _ = email_verificacion_registro("Ana", "ana@x.com", "lead", "L1", lang="en")
     assert "we have received" in h_en.lower()
     assert "Hemos recibido" not in h_en
+    assert tpl_en == "email_verificacion_registro_en"
 
-    _, h_cita, _ = email_confirmacion_cita("Ana", "2026-08-20T10:00:00+00:00", "Kickoff", "EVT-1", lang="en")
+    _, h_cita, _, tpl_cita, _ = email_confirmacion_cita("Ana", "2026-08-20T10:00:00+00:00", "Kickoff", "EVT-1", lang="en")
     assert "appointment is confirmed" in h_cita.lower()
+    assert tpl_cita == "email_confirmacion_cita_en"

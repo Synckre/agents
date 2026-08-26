@@ -43,8 +43,16 @@ def _fecha_humana(iso: str, lang: str = "es") -> str:
 
 def email_confirmacion_cita(
     nombre: str, fecha_iso: str, motivo: str, referencia: str, lang: str = "es"
-) -> tuple[str, str, str]:
+) -> tuple[str, str, str, str, dict]:
     fecha = _fecha_humana(fecha_iso, lang)
+    template_id = "email_confirmacion_cita_en" if lang == "en" else "email_confirmacion_cita"
+    variables = {
+        "nombre": nombre,
+        "fecha": fecha,
+        "fecha_iso": fecha_iso,
+        "motivo": motivo or "—",
+        "referencia": referencia,
+    }
     if lang == "en":
         asunto = f"✅ Appointment confirmed — {COMPANY}"
         html = _base(
@@ -69,7 +77,7 @@ def email_confirmacion_cita(
             f"Topic: {motivo or '—'}\n\n"
             "We'll send a reminder before the meeting. If you need to reschedule, contact us."
         )
-        return asunto, html, texto
+        return asunto, html, texto, template_id, variables
     asunto = f"✅ Cita confirmada — {COMPANY}"
     html = _base(f"""
     <h2 style="margin: 0 0 12px; font-size: 18px;">Hola {nombre}, tu cita quedó confirmada</h2>
@@ -90,13 +98,20 @@ def email_confirmacion_cita(
         f"Motivo: {motivo or '—'}\n\n"
         "Te enviaremos un recordatorio antes de la cita. Si necesitas reagendar, contáctanos."
     )
-    return asunto, html, texto
+    return asunto, html, texto, template_id, variables
 
 
 def email_verificacion_registro(
     nombre: str, email: str, entidad: str = "", referencia: str = "", lang: str = "es"
-) -> tuple[str, str, str]:
+) -> tuple[str, str, str, str, dict]:
     """Acuse de recibo al cliente. Sin datos internos. Idioma del lead/cliente."""
+    template_id = "email_verificacion_registro_en" if lang == "en" else "email_verificacion_registro"
+    variables = {
+        "nombre": nombre,
+        "email": email,
+        "entidad": entidad,
+        "referencia": referencia,
+    }
     if lang == "en":
         asunto = f"📬 We received your information — {COMPANY}"
         html = _base(
@@ -118,7 +133,7 @@ def email_verificacion_registro(
             f"and an advisor from {COMPANY} will get in touch with you shortly.\n\n"
             "We're here to help."
         )
-        return asunto, html, texto
+        return asunto, html, texto, template_id, variables
     asunto = f"📬 Hemos recibido tu información — {COMPANY}"
     html = _base(f"""
     <h2 style="margin: 0 0 12px; font-size: 18px;">Hola {nombre}, hemos recibido tu información</h2>
@@ -136,7 +151,7 @@ def email_verificacion_registro(
         f"y un asesor de {COMPANY} se pondrá en contacto contigo muy pronto.\n\n"
         "¡Estamos para ayudarte!"
     )
-    return asunto, html, texto
+    return asunto, html, texto, template_id, variables
 
 
 def email_recordatorio_cita(
@@ -146,8 +161,17 @@ def email_recordatorio_cita(
     referencia: str,
     tipo: str = "recordatorio",
     lang: str = "es",
-) -> tuple[str, str, str]:
+) -> tuple[str, str, str, str, dict]:
     fecha = _fecha_humana(fecha_iso, lang)
+    template_id = "email_recordatorio_cita_en" if lang == "en" else "email_recordatorio_cita"
+    variables = {
+        "nombre": nombre,
+        "fecha": fecha,
+        "fecha_iso": fecha_iso,
+        "motivo": motivo or "—",
+        "referencia": referencia,
+        "tipo": tipo,
+    }
     if lang == "en":
         asunto = f"⏰ Reminder: your appointment — {COMPANY}"
         lead = (
@@ -174,7 +198,7 @@ def email_recordatorio_cita(
             f"Date and time: {fecha}\n"
             f"Topic: {motivo or '—'}\n\nWe look forward to speaking with you."
         )
-        return asunto, html, texto
+        return asunto, html, texto, template_id, variables
     asunto = f"⏰ Recordatorio de tu cita — {COMPANY}"
     lead = "Te recordamos que tienes una cita muy pronto con nuestro equipo." if tipo == "minutos" else "Te recordamos que mañana tienes una cita con nuestro equipo."
     html = _base(f"""
@@ -193,13 +217,18 @@ def email_recordatorio_cita(
         f"Fecha y hora: {fecha}\n"
         f"Motivo: {motivo or '—'}\n\n¡Te esperamos!"
     )
-    return asunto, html, texto
+    return asunto, html, texto, template_id, variables
 
 
 def email_continuar_conversacion(
     nombre: str, enlace: str, lang: str = "es"
-) -> tuple[str, str, str]:
+) -> tuple[str, str, str, str, dict]:
     """Invitación a seguir con el cualificador comercial (no inmediato)."""
+    template_id = "email_continuar_conversacion_en" if lang == "en" else "email_continuar_conversacion"
+    variables = {
+        "nombre": nombre,
+        "enlace": enlace,
+    }
     if lang == "en":
         asunto = f"Let's continue your conversation — {COMPANY}"
         html = _base(
@@ -222,7 +251,7 @@ def email_continuar_conversacion(
             f"Hi {nombre}, a specialist is ready to continue.\n\n"
             f"Open this link to pick up where we left off:\n{enlace}\n"
         )
-        return asunto, html, texto
+        return asunto, html, texto, template_id, variables
     asunto = f"Sigamos tu consulta — {COMPANY}"
     html = _base(f"""
     <h2 style="margin: 0 0 12px; font-size: 18px;">Hola {nombre}, un especialista puede continuar contigo</h2>
@@ -241,20 +270,29 @@ def email_continuar_conversacion(
         f"Hola {nombre}, un especialista puede continuar contigo.\n\n"
         f"Abre este enlace para retomar la conversación:\n{enlace}\n"
     )
-    return asunto, html, texto
+    return asunto, html, texto, template_id, variables
 
 
 def email_cita_interna(
-    nombre: str, email: str, fecha_iso: str, motivo: str, meet_url: str = ""
-) -> tuple[str, str, str]:
-    """Aviso al equipo Synckre (siempre español)."""
+    nombre: str, email: str, fecha_iso: str, motivo: str, meet_url: str = "", lang: str = "es"
+) -> tuple[str, str, str, str, dict]:
+    """Aviso al equipo Synckre."""
     fecha = _fecha_humana(fecha_iso, "es")
+    template_id = "email_cita_interna_en" if lang == "en" else "email_cita_interna"
+    variables = {
+        "nombre": nombre,
+        "email": email,
+        "fecha": fecha,
+        "fecha_iso": fecha_iso,
+        "motivo": motivo or "—",
+        "meet_url": meet_url,
+    }
+    asunto = f"📅 Nueva cita con {nombre} — {COMPANY}"
     meet = (
         f'<p style="margin:16px 0 0;font-size:14px;">Meet: <a href="{meet_url}">{meet_url}</a></p>'
         if meet_url
         else ""
     )
-    asunto = f"📅 Nueva cita con {nombre} — {COMPANY}"
     html = _base(f"""
     <h2 style="margin: 0 0 12px; font-size: 18px;">Cita comercial registrada</h2>
     <table style="width: 100%; border-collapse: collapse; font-size: 14px; margin-bottom: 16px;">
@@ -272,4 +310,4 @@ def email_cita_interna(
         f"Fecha y hora: {fecha}\nMotivo: {motivo or '—'}\n"
         + (f"Meet: {meet_url}\n" if meet_url else "")
     )
-    return asunto, html, texto
+    return asunto, html, texto, template_id, variables

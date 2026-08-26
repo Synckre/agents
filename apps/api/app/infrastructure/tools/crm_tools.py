@@ -25,11 +25,13 @@ async def _enviar_verificacion(
     from app.application.agent.company_scope import idioma_contacto
 
     lang = await idioma_contacto(conversation_id, user_text)
-    asunto, html, texto = email_verificacion_registro(
+    asunto, html, texto, template_id, variables = email_verificacion_registro(
         nombre, email, entidad, referencia, lang=lang
     )
     try:
-        return await enviar_correo_html(email, asunto, html, texto)
+        return await enviar_correo_html(
+            email, asunto, html, texto, template_id=template_id, variables=variables
+        )
     except Exception as exc:
         return f"Envío fallido: {exc}"
 
