@@ -85,14 +85,13 @@ export default function ConversationDetailPage() {
 
   return (
     <PageTransition>
-    <div className="flex flex-col gap-4 h-[calc(100vh-7rem)] overflow-hidden">
+    <div className="flex flex-col gap-3 h-[calc(100dvh-4.5rem)] lg:h-[calc(100vh-7rem)] overflow-hidden pb-safe">
       {/* Header (Buttons always on right) */}
-      <div className="flex items-center justify-between gap-3 border-b border-zinc-800 pb-3 shrink-0">
+      <div className="flex items-center justify-between gap-3 border-b border-border pb-3 shrink-0">
         <div className="flex items-center gap-3 min-w-0">
           <Link
             href="/conversations"
-            transitionTypes={['nav-back']}
-            className="p-2 rounded-lg bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 text-zinc-300 transition shrink-0"
+            className="p-2 rounded-xl bg-muted/60 border border-border hover:bg-muted text-muted-foreground hover:text-foreground active:scale-95 transition shrink-0"
             title="Volver a conversaciones"
           >
             <ArrowLeft className="size-4" />
@@ -213,7 +212,7 @@ export default function ConversationDetailPage() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 flex-1 overflow-hidden min-h-0">
         {/* Left: Chat Area (2 cols on desktop, 1 col full height on mobile) */}
         <div className="lg:col-span-2 flex flex-col justify-between overflow-hidden h-full">
-          <div className="flex-1 overflow-y-auto space-y-4 pr-1">
+          <div className="flex-1 overflow-y-auto space-y-4 pr-1 touch-scrolling">
             {messages.length === 0 && !isStreaming ? (
               <div className="py-24 text-center text-zinc-500 text-sm">
                 Envía un mensaje para comenzar la conversación técnica.
@@ -314,7 +313,7 @@ export default function ConversationDetailPage() {
           </div>
 
           {/* Form (composer estilo ChatGPT/Claude) */}
-          <form onSubmit={(e) => { e.preventDefault(); sendMessage(); }} className="pt-4">
+          <form onSubmit={(e) => { e.preventDefault(); sendMessage(); }} className="pt-2 sm:pt-4">
             <div className="relative">
               <Textarea
                 value={inputMessage}
@@ -327,19 +326,19 @@ export default function ConversationDetailPage() {
                 }
                 disabled={sending || (!humanMode && isStreaming)}
                 rows={1}
-                className="min-h-12 max-h-48 resize-none rounded-2xl bg-muted/40 border-border px-4 py-3 pr-14 text-sm leading-relaxed shadow-sm focus-visible:border-ring"
+                className="min-h-12 max-h-48 resize-none rounded-2xl bg-muted/40 border-border px-4 py-3 pr-14 text-base sm:text-sm leading-relaxed shadow-sm focus-visible:border-ring"
               />
               <Button
                 type="submit"
                 size="icon"
                 disabled={sending || (!humanMode && isStreaming) || !inputMessage.trim()}
                 aria-label="Enviar mensaje"
-                className="absolute right-2.5 bottom-1.5 size-9 rounded-full"
+                className="absolute right-2.5 bottom-1.5 size-9 rounded-full active:scale-95 transition-transform"
               >
                 {humanMode ? <Headset /> : <Send />}
               </Button>
             </div>
-            <p className="text-[11px] text-muted-foreground mt-1.5 px-1">
+            <p className="text-[11px] text-muted-foreground mt-1 px-1 hidden sm:block">
               Enter para enviar · Shift + Enter para salto de línea
             </p>
           </form>

@@ -15,13 +15,14 @@ import {
   X,
   LogOut,
   Activity,
+  MoreHorizontal,
 } from 'lucide-react';
 import { UserButton, SignOutButton } from '@clerk/nextjs';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/badge';
 import { useApiStatus } from '@/hooks/useApiStatus';
 
-const ITEMS = [
+const DRAWER_ITEMS = [
   { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
   { label: 'Conversaciones', href: '/conversations', icon: MessageSquare },
   { label: 'Workflows', href: '/workflows', icon: GitBranch },
@@ -31,25 +32,36 @@ const ITEMS = [
   { label: 'Configuración', href: '/settings', icon: Settings },
 ];
 
+const BOTTOM_TABS = [
+  { label: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
+  { label: 'Chats', href: '/conversations', icon: MessageSquare },
+  { label: 'Workflows', href: '/workflows', icon: GitBranch },
+  { label: 'Conocimiento', href: '/knowledge', icon: BookOpen },
+];
+
 export function MobileNav() {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const status = useApiStatus();
 
+  // Ocultar barra inferior cuando se está dentro del detalle de una conversación activa en móvil
+  const isConversationDetail =
+    pathname.startsWith('/conversations/') && pathname !== '/conversations';
+
   return (
     <>
-      {/* Mobile Top Navigation Bar (Hamburguesa + Brand + User) */}
-      <div className="lg:hidden flex items-center justify-between px-6 sm:px-8 h-18 sm:h-20 py-3.5 border-b border-border bg-background/95 backdrop-blur z-30">
-        <div className="flex items-center gap-3">
+      {/* Mobile Top Navigation Bar (Header App Móvil) */}
+      <div className="lg:hidden flex items-center justify-between px-4 sm:px-6 h-14 py-2 border-b border-border bg-background/95 backdrop-blur-md sticky top-0 z-30 shrink-0">
+        <div className="flex items-center gap-2.5">
           <button
             onClick={() => setOpen(true)}
-            className="p-2 rounded-lg bg-muted/60 text-foreground hover:bg-muted transition"
+            className="p-2 rounded-lg bg-muted/60 text-foreground hover:bg-muted active:scale-95 transition"
             aria-label="Abrir menú de navegación"
           >
             <Menu className="size-5" />
           </button>
           <div className="flex items-center gap-2">
-            <div className="size-7 rounded-md bg-primary text-primary-foreground flex items-center justify-center font-bold text-xs">
+            <div className="size-7 rounded-md bg-primary text-primary-foreground flex items-center justify-center font-bold text-xs shadow-sm">
               S
             </div>
             <span className="text-sm font-bold text-foreground">Synckre Agent</span>
@@ -80,6 +92,51 @@ export function MobileNav() {
         </div>
       </div>
 
+      {/* Mobile Bottom Navigation Bar (Pestañas Inferiores Móviles tipo App Nativa) */}
+      {!isConversationDetail && (
+        <div className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-background/90 backdrop-blur-xl border-t border-border pb-safe">
+          <nav className="flex items-center justify-around h-14 px-2">
+            {BOTTOM_TABS.map((tab) => {
+              const Icon = tab.icon;
+              const active =
+                pathname === tab.href ||
+                (tab.href !== '/dashboard' && pathname.startsWith(tab.href));
+
+              return (
+                <Link
+                  key={tab.href}
+                  href={tab.href}
+                  className={cn(
+                    'flex flex-col items-center justify-center flex-1 h-full gap-0.5 text-[10px] font-medium transition-colors active:scale-90',
+                    active ? 'text-primary' : 'text-muted-foreground hover:text-foreground'
+                  )}
+                >
+                  <div className="relative">
+                    <Icon className="size-5" />
+                    {active && (
+                      <span className="absolute -bottom-1 left-1/2 -translate-x-1/2 size-1 rounded-full bg-primary" />
+                    )}
+                  </div>
+                  <span className="truncate max-w-[64px]">{tab.label}</span>
+                </Link>
+              );
+            })}
+
+            {/* Pestaña "Más" para abrir el drawer */}
+            <button
+              onClick={() => setOpen(true)}
+              className={cn(
+                'flex flex-col items-center justify-center flex-1 h-full gap-0.5 text-[10px] font-medium text-muted-foreground hover:text-foreground transition-colors active:scale-90',
+                open && 'text-primary'
+              )}
+            >
+              <MoreHorizontal className="size-5" />
+              <span>Más</span>
+            </button>
+          </nav>
+        </div>
+      )}
+
       {/* Slide-Over Drawer Overlay */}
       {open && (
         <div className="lg:hidden fixed inset-0 z-50 flex">
@@ -90,7 +147,7 @@ export function MobileNav() {
           />
 
           {/* Drawer Content */}
-          <div className="relative w-4/5 max-w-xs bg-background h-full border-r border-border p-5 flex flex-col justify-between z-10 shadow-2xl animate-fade-slide-in">
+          <div className="relative w-4/5 max-w-xs bg-background h-full border-r border-border p-5 flex flex-col justify-between z-10 shadow-2xl animate-fade-slide-in pb-safe">
             <div className="space-y-6">
               {/* Header */}
               <div className="flex items-center justify-between pb-4 border-b border-border">
@@ -105,7 +162,7 @@ export function MobileNav() {
                 </div>
                 <button
                   onClick={() => setOpen(false)}
-                  className="p-1.5 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground"
+                  className="p-1.5 rounded-md hover:bg-muted text-muted-foreground hover:text-foreground active:scale-90 transition"
                 >
                   <X className="size-5" />
                 </button>
@@ -113,7 +170,7 @@ export function MobileNav() {
 
               {/* Navigation Links */}
               <nav className="flex flex-col gap-1">
-                {ITEMS.map((item) => {
+                {DRAWER_ITEMS.map((item) => {
                   const Icon = item.icon;
                   const active = pathname === item.href || pathname.startsWith(item.href + '/');
                   return (
@@ -121,9 +178,8 @@ export function MobileNav() {
                       key={item.href}
                       href={item.href}
                       onClick={() => setOpen(false)}
-                      transitionTypes={['nav-forward']}
                       className={cn(
-                        'flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors',
+                        'flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-all active:scale-[0.98]',
                         active
                           ? 'bg-primary/10 text-primary font-semibold'
                           : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
@@ -139,7 +195,7 @@ export function MobileNav() {
 
             {/* Footer with User Profile and API Status */}
             <div className="pt-4 border-t border-border space-y-3">
-              <div className="flex items-center justify-between gap-2 p-2 rounded-lg bg-muted/40 border border-border">
+              <div className="flex items-center justify-between gap-2 p-2 rounded-xl bg-muted/40 border border-border">
                 <div className="flex items-center gap-2 min-w-0">
                   <UserButton showName={false} appearance={{ elements: { userButtonAvatarBox: 'size-7' } }} />
                   <div className="min-w-0 flex-1">
@@ -148,7 +204,7 @@ export function MobileNav() {
                   </div>
                 </div>
                 <SignOutButton redirectUrl="/login">
-                  <button className="p-1.5 rounded-md text-muted-foreground hover:text-red-400 hover:bg-red-950/20">
+                  <button className="p-1.5 rounded-md text-muted-foreground hover:text-red-400 hover:bg-red-950/20 active:scale-90 transition">
                     <LogOut className="size-4" />
                   </button>
                 </SignOutButton>

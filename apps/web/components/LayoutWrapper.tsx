@@ -33,7 +33,7 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
 
   if (isLoginPage) {
     return (
-      <div className="w-full min-h-screen flex items-center justify-center bg-background text-foreground">
+      <div className="w-full min-h-[100dvh] flex items-center justify-center bg-background text-foreground">
         <AuthTokenBridge />
         {children}
       </div>
@@ -43,12 +43,15 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
   const section =
     SECTION_MAP.find((s) => pathname.startsWith(s.prefix))?.title ?? SECTION_META.title;
 
+  const isConversationDetail =
+    pathname.startsWith('/conversations/') && pathname !== '/conversations';
+
   return (
-    <div className="flex w-full min-h-screen bg-background text-foreground">
+    <div className="flex w-full min-h-[100dvh] bg-background text-foreground overscroll-none">
       <AuthTokenBridge />
       <Sidebar />
 
-      <div className="flex-1 flex flex-col min-w-0 h-screen overflow-y-auto">
+      <div className="flex-1 flex flex-col min-w-0 h-[100dvh] overflow-y-auto touch-scrolling">
         {/* Topbar — h-16 (solo en desktop lg:flex) */}
         <header className="hidden lg:flex sticky top-0 z-20 h-16 shrink-0 items-center justify-between gap-4 border-b border-border bg-background/80 backdrop-blur px-4 lg:px-8">
           <div className="flex items-center gap-2 min-w-0">
@@ -89,8 +92,15 @@ export function LayoutWrapper({ children }: { children: React.ReactNode }) {
         {/* Navegación móvil */}
         <MobileNav />
 
-        <main className="flex-1">
-          <div className="max-w-[1280px] mx-auto w-full px-4 lg:px-8 py-6 lg:py-8">{children}</div>
+        <main className={cn('flex-1', !isConversationDetail && 'pb-20 lg:pb-0')}>
+          <div
+            className={cn(
+              'max-w-[1280px] mx-auto w-full px-3 sm:px-4 lg:px-8',
+              isConversationDetail ? 'py-2 lg:py-8 h-[calc(100dvh-4rem)] lg:h-auto' : 'py-4 sm:py-6 lg:py-8'
+            )}
+          >
+            {children}
+          </div>
         </main>
       </div>
     </div>
