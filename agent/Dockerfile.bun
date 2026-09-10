@@ -1,0 +1,44 @@
+# ==========================================
+# 1. Base Stage: Bun 1.x Alpine
+# ==========================================
+FROM oven/bun:1-alpine AS base
+WORKDIR /app
+
+# ==========================================
+# 2. Dependencies Stage
+# ==========================================
+FROM base AS deps
+COPY package.json ./
+RUN bun install
+
+# ==========================================
+# 3. Development Stage: Hot-reload with Bun
+# ==========================================
+FROM deps AS dev
+ENV NODE_ENV=development
+COPY . .
+CMD ["bun", "--watch", "src/index.ts"]
+
+# ==========================================
+# 4. Build Stage: Compile TypeScript
+# ==========================================
+FROM deps AS build
+ENV NODE_ENV=production
+COPY . .
+RUN bun run build
+
+# ==========================================
+# 5. Production Stage: Minimal runtime image
+# ==========================================
+FROM base AS prod
+ENV NODE_ENV=production
+
+USER bun
+
+COPY --chown=bun:bun --from=build /app/dist ./dist
+COPY --chown=bun:bun --from=deps /app/node_modules ./node_modules
+COPY --chown=bun:bun --from=build /app/package.json ./package.json
+
+EXPOSE 3000
+
+CMD ["bun", "dist/index.js"]

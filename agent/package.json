@@ -1,0 +1,53 @@
+{
+  "name": "agent-synckre",
+  "version": "1.0.0",
+  "description": "Multi-agent orchestration system with Hexagonal Architecture and Supervisor Pattern using LangGraph.js",
+  "main": "dist/index.js",
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "dev:bun": "bun --watch src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "start:bun": "bun dist/index.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "lint": "eslint \"src/**/*.ts\"",
+    "lint:fix": "eslint \"src/**/*.ts\" --fix",
+    "db:init": "tsx src/scripts/init-db.ts",
+    "db:init:bun": "bun src/scripts/init-db.ts",
+    "ingest": "tsx src/scripts/ingest-knowledge.ts",
+    "google:auth": "tsx src/scripts/google-auth.ts",
+    "ui": "cd chainlit && ./.venv/bin/chainlit run app.py --port 8000",
+    "copilotkit": "tsx src/copilotkit-server.ts",
+    "copilotkit:prod": "node dist/copilotkit-server.js",
+    "docker:dev": "docker compose up --build",
+    "docker:bun": "docker compose -f docker-compose.bun.yml up --build",
+    "docker:build": "docker build --target prod -t agent-synckre ."
+  },
+  "dependencies": {
+    "@copilotkit/runtime": "^1.70.1",
+    "@langchain/core": "^1.2.9",
+    "@langchain/langgraph": "^1.4.13",
+    "dotenv": "^16.4.7",
+    "googleapis": "^178.0.0",
+    "pdf-parse": "^2.4.5",
+    "pg": "^8.23.0",
+    "zod": "^3.24.2",
+    "zod-to-json-schema": "^3.25.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20.17.19",
+    "@types/pg": "^8.23.1",
+    "@typescript-eslint/eslint-plugin": "^8.25.0",
+    "@typescript-eslint/parser": "^8.25.0",
+    "eslint": "^8.57.1",
+    "prettier": "^3.5.2",
+    "tsx": "^4.19.3",
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.6"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  }
+}

@@ -1,0 +1,36 @@
+# Dependencies
+node_modules/
+
+# Production output
+dist/
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.log
+
+# Editor and OS
+.DS_Store
+.idea/
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+
+# Test coverage
+coverage/
+
+# Secrets
+secrets/
+
+# Python / Chainlit UI
+.venv/
+**/__pycache__/
+chainlit/.files/
+.chainlit/translations/
