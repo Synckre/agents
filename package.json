@@ -1,0 +1,11 @@
+{
+  "name": "agent-synckre-workspace",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "npm --prefix agent run build",
+    "start": "npm --prefix agent start",
+    "dev": "npm --prefix agent run dev"
+  }
+}

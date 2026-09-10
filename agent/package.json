@@ -7,9 +7,10 @@
   "scripts": {
     "dev": "tsx watch src/index.ts",
     "dev:bun": "bun --watch src/index.ts",
-    "build": "tsc",
+    "build": "tsc --noEmit && esbuild src/index.ts src/worker.ts src/copilotkit-server.ts --bundle --platform=node --format=esm --packages=external --outdir=dist",
     "start": "node dist/index.js",
     "start:bun": "bun dist/index.js",
+    "worker:prod": "node dist/worker.js",
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "eslint \"src/**/*.ts\"",
@@ -21,7 +22,7 @@
     "ui": "cd chainlit && ./.venv/bin/chainlit run app.py --port 8000",
     "copilotkit": "tsx src/copilotkit-server.ts",
     "copilotkit:prod": "node dist/copilotkit-server.js",
-    "docker:dev": "docker compose up --build",
+    "docker:dev": "docker compose -f docker-compose.dev.yml up --build",
     "docker:build": "docker build --target prod -t agent-synckre ."
   },
   "dependencies": {
@@ -40,6 +41,7 @@
     "@types/pg": "^8.23.1",
     "@typescript-eslint/eslint-plugin": "^8.25.0",
     "@typescript-eslint/parser": "^8.25.0",
+    "esbuild": "^0.28.2",
     "eslint": "^8.57.1",
     "prettier": "^3.5.2",
     "tsx": "^4.19.3",

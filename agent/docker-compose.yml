@@ -1,49 +1,10 @@
+# Coolify: Base Directory `/agent`, Compose file `docker-compose.yml`
+# Neon: set DATABASE_URL in Coolify (runtime). Do not run Postgres here.
+
 services:
-  app:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: dev
-    container_name: agent_app_dev
-    restart: unless-stopped
-    env_file:
-      - .env
-    environment:
-      - NODE_ENV=development
-      - OLLAMA_BASE_URL=http://ollama:11434
-    volumes:
-      - ./:/app
-      - /app/node_modules
-    ports:
-      - "3000:3000"
-    stdin_open: true
-    tty: true
-    depends_on:
-      ollama-pull:
-        condition: service_completed_successfully
-
-  worker:
-    build:
-      context: .
-      dockerfile: Dockerfile
-      target: dev
-    container_name: agent_worker_dev
-    restart: unless-stopped
-    env_file:
-      - .env
-    environment:
-      - NODE_ENV=development
-    volumes:
-      - ./:/app
-      - /app/node_modules
-    command: ["npx", "tsx", "src/worker.ts"]
-
   ollama:
     image: ollama/ollama:latest
-    container_name: agent_ollama
     restart: unless-stopped
-    ports:
-      - "11434:11434"
     volumes:
       - ollama_data:/root/.ollama
     healthcheck:
@@ -51,19 +12,62 @@ services:
       interval: 10s
       timeout: 5s
       retries: 12
-      start_period: 15s
+      start_period: 20s
 
   ollama-pull:
     image: ollama/ollama:latest
-    container_name: agent_ollama_pull
+    restart: "no"
     depends_on:
       ollama:
         condition: service_healthy
     environment:
       OLLAMA_HOST: http://ollama:11434
     entrypoint: ["ollama", "pull", "${OLLAMA_EMBED_MODEL:-nomic-embed-text}"]
-    restart: "no"
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: prod
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: "3000"
+      OLLAMA_BASE_URL: http://ollama:11434
+    expose:
+      - "3000"
+    labels:
+      - traefik.http.services.app.loadbalancer.server.port=3000
+    depends_on:
+      ollama:
+        condition: service_started
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/health').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 8
+      start_period: 90s
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: prod
+    restart: unless-stopped
+    command: ["node", "dist/worker.js"]
+    environment:
+      NODE_ENV: production
+      OLLAMA_BASE_URL: http://ollama:11434
+    depends_on:
+      ollama:
+        condition: service_started
 
 volumes:
   ollama_data:
-
