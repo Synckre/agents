@@ -1,15 +1,5 @@
-# Coolify (agent only). Postgres lives on Neon — do not run it here.
-#
-# Resource: Docker Compose
-# Base Directory: /agent
-# Compose file: docker-compose.coolify.yml
-#
-# Assign the public domain to the `app` service.
-# In Coolify env (required):
-#   DATABASE_URL          Neon pooled URI (enable pgvector on the project)
-#   LLM_API_KEY, SESSION_SECRET, SYNCKRE_API_KEY
-#   CORS_ORIGIN=https://www.synckre.com,https://synckre.com
-# Optional: RESEND_*, ERPNEXT_*, GOOGLE_*, EMAIL_FROM, INTERNAL_ALERT_EMAIL
+# Coolify: Base Directory `/`, Compose file `docker-compose.yml`
+# Neon: set DATABASE_URL in Coolify (runtime). Do not run Postgres here.
 
 services:
   ollama:
@@ -37,7 +27,7 @@ services:
 
   app:
     build:
-      context: .
+      context: ./agent
       dockerfile: Dockerfile
       target: prod
     restart: unless-stopped
@@ -66,7 +56,7 @@ services:
 
   worker:
     build:
-      context: .
+      context: ./agent
       dockerfile: Dockerfile
       target: prod
     restart: unless-stopped

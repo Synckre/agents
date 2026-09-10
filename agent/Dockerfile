@@ -10,7 +10,7 @@ WORKDIR /app
 FROM base AS deps
 RUN npm install -g npm@latest
 COPY package.json package-lock.json* ./
-RUN npm ci
+RUN npm ci --include=dev
 
 # ==========================================
 # 3. Development Stage: Hot-reload with tsx

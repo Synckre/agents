@@ -22,7 +22,6 @@
     "copilotkit": "tsx src/copilotkit-server.ts",
     "copilotkit:prod": "node dist/copilotkit-server.js",
     "docker:dev": "docker compose up --build",
-    "docker:bun": "docker compose -f docker-compose.bun.yml up --build",
     "docker:build": "docker build --target prod -t agent-synckre ."
   },
   "dependencies": {

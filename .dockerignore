@@ -1,0 +1,13 @@
+.git
+.reasonix
+.agents
+**/.DS_Store
+**/node_modules
+**/dist
+**/.env
+**/.env.*
+agent/.chainlit
+agent/chainlit
+agent/knowledge
+agent/test
+agent/coverage
