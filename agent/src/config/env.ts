@@ -39,7 +39,10 @@ const envSchema = z.object({
 
   RESEND_API_KEY: z.string().optional(),
   EMAIL_FROM: z.string().optional(),
-  INTERNAL_ALERT_EMAIL: z.string().email('INTERNAL_ALERT_EMAIL is required and must be a valid email'),
+  INTERNAL_ALERT_EMAIL: z.preprocess(
+    (value) => (value === '' || value === undefined ? undefined : value),
+    z.string().email('INTERNAL_ALERT_EMAIL must be a valid email').optional()
+  ),
   SYNCKRE_API_KEY: z.string().optional(),
 
   OLLAMA_BASE_URL: z.string().url().default('http://localhost:11434'),
@@ -62,4 +65,14 @@ const envSchema = z.object({
 
 export type Env = z.infer<typeof envSchema>;
 
-export const env = envSchema.parse(process.env);
+const parsed = envSchema.safeParse(process.env);
+if (!parsed.success) {
+  console.error('[env] invalid configuration:');
+  for (const issue of parsed.error.issues) {
+    const field = issue.path.join('.') || '(root)';
+    console.error(`  - ${field}: ${issue.message}`);
+  }
+  process.exit(1);
+}
+
+export const env = parsed.data;

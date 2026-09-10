@@ -50,6 +50,6 @@ export function buildExternalAdapters(): ExternalAdapters {
     google,
     email,
     scheduling,
-    internalAlertEmail: env.INTERNAL_ALERT_EMAIL,
+    internalAlertEmail: env.INTERNAL_ALERT_EMAIL ?? '',
   };
 }

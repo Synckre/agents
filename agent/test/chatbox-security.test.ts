@@ -217,7 +217,7 @@ describe('OpenAI-compatible chatbox API', () => {
     expect(hashSessionToken('s', 'tok')).not.toBe(hashSessionToken('s', 'other'));
   });
 
-  it('no filtra errores de Postgres y marca /health como caído', async () => {
+  it('no filtra errores de Postgres y marca /ready como caído', async () => {
     const memory = {
       save: async () => {
         const error = new Error('password authentication failed for user \'neondb_owner\'');
@@ -253,8 +253,11 @@ describe('OpenAI-compatible chatbox API', () => {
     const base = `http://127.0.0.1:${address.port}`;
 
     const health = await fetch(`${base}/health`);
-    expect(health.status).toBe(503);
-    await expect(health.json()).resolves.toMatchObject({ ok: false });
+    expect(health.status).toBe(200);
+
+    const ready = await fetch(`${base}/ready`);
+    expect(ready.status).toBe(503);
+    await expect(ready.json()).resolves.toMatchObject({ ok: false });
 
     const session = await fetch(`${base}/api/copilotkit/session`, {
       method: 'POST',

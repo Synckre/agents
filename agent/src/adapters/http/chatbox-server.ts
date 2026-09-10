@@ -274,26 +274,30 @@ export function startChatboxServer(deps: ChatboxServerDeps): Server {
 
   async function handle(req: IncomingMessage, res: ServerResponse): Promise<void> {
     try {
-      if (!applyCors(req, res, deps.corsOrigins)) {
-        return;
-      }
-
       const url = new URL(req.url ?? '/', `http://${req.headers.host ?? 'localhost'}`);
       const ip = clientIp(req);
       const path = url.pathname.replace(/\/$/, '') || '/';
 
-      if (req.method === 'GET' && path === '/health') {
+      if (req.method === 'GET' && (path === '/health' || path === '/ready')) {
+        if (path === '/health') {
+          json(res, 200, { ok: true, driver: 'unified' });
+          return;
+        }
         if (deps.checkReady) {
           try {
             await deps.checkReady();
           } catch (error) {
             const message = error instanceof Error ? error.message : String(error);
-            console.error('[health] persistence check failed:', message);
+            console.error('[ready] persistence check failed:', message);
             json(res, 503, { ok: false, driver: 'unified' });
             return;
           }
         }
         json(res, 200, { ok: true, driver: 'unified' });
+        return;
+      }
+
+      if (!applyCors(req, res, deps.corsOrigins)) {
         return;
       }
 

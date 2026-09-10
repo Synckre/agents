@@ -38,7 +38,7 @@ async function main(): Promise<void> {
     emailSender,
     followupScheduler: scheduler,
     crm,
-    internalAlertEmail: env.INTERNAL_ALERT_EMAIL,
+    internalAlertEmail: env.INTERNAL_ALERT_EMAIL ?? '',
   });
 
   const worker = new FollowupCronWorker(scheduler, useCase, {

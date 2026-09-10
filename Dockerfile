@@ -26,7 +26,7 @@ COPY --chown=node:node --from=build /app/package.json ./package.json
 
 EXPOSE 3000
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=25s --retries=5 \
-  CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||3000)+'/health').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
+HEALTHCHECK --interval=15s --timeout=5s --start-period=90s --retries=8 \
+  CMD node -e "fetch('http://127.0.0.1:3000/health').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
-CMD ["node", "dist/index.js"]
+CMD ["sh", "-c", "echo \"[boot] node $(node -v) PORT=${PORT:-3000}\" && exec node dist/index.js"]
