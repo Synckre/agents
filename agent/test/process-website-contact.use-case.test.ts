@@ -103,4 +103,36 @@ describe('ProcessWebsiteContactUseCase', () => {
     expect(crm.appendLeadNote).toHaveBeenCalledOnce();
     expect(crm.createLead).not.toHaveBeenCalled();
   });
+
+  it('no falla si el CRM no está configurado o falla, y envía los correos', async () => {
+    const crm: ICrm = {
+      findLead: vi.fn(async () => {
+        throw new Error('ERPNext is not configured');
+      }),
+      getLeadById: vi.fn(async () => null),
+      createLead: vi.fn(async () => {
+        throw new Error('ERPNext is not configured');
+      }),
+      updateLead: vi.fn(async () => {
+        throw new Error('ERPNext is not configured');
+      }),
+      appendLeadNote: vi.fn(async () => undefined),
+    };
+    const email: IEmailSender = {
+      send: vi.fn(async () => ({ id: 'msg_1' })),
+    };
+
+    const useCase = new ProcessWebsiteContactUseCase(crm, email, 'ops@synckre.com');
+    const result = await useCase.execute({
+      name: 'Ada Lovelace',
+      email: 'ada@company.com',
+      message: 'Hello from website without CRM',
+      locale: 'en',
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.action).toBe('created');
+    expect(result.emails).toEqual({ client: true, internal: true });
+    expect(email.send).toHaveBeenCalledTimes(2);
+  });
 });

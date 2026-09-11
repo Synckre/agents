@@ -85,11 +85,6 @@ export class ProcessWebsiteContactUseCase {
   ) {}
 
   async execute(input: WebsiteContactInput): Promise<WebsiteContactResult> {
-    const existing = await this.crm.findLead({
-      email: input.email,
-      ...(input.phone ? { phone: input.phone } : {}),
-    });
-
     const fields = {
       name: input.name,
       email: input.email,
@@ -100,27 +95,37 @@ export class ProcessWebsiteContactUseCase {
       },
     };
 
-    let leadId: string;
-    let action: 'created' | 'updated';
+    let leadId = `web-${Date.now()}`;
+    let action: 'created' | 'updated' = 'created';
 
-    if (existing?.id) {
-      const updated = await this.crm.updateLead(existing.id, fields);
-      leadId = updated.id;
-      action = 'updated';
-    } else {
-      const created = await this.crm.createLead({
-        ...fields,
-        data: {
-          ...fields.data,
-          notes: noteFrom(input),
-        },
+    try {
+      const existing = await this.crm.findLead({
+        email: input.email,
+        ...(input.phone ? { phone: input.phone } : {}),
       });
-      leadId = created.id;
-      action = 'created';
-    }
 
-    if (action === 'updated') {
-      await this.crm.appendLeadNote(leadId, noteFrom(input));
+      if (existing?.id) {
+        const updated = await this.crm.updateLead(existing.id, fields);
+        leadId = updated.id;
+        action = 'updated';
+      } else {
+        const created = await this.crm.createLead({
+          ...fields,
+          data: {
+            ...fields.data,
+            notes: noteFrom(input),
+          },
+        });
+        leadId = created.id;
+        action = 'created';
+      }
+
+      if (action === 'updated') {
+        await this.crm.appendLeadNote(leadId, noteFrom(input));
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error('[website_contact] CRM lead creation failed (proceeding to send notification emails):', message);
     }
 
     const lang = input.locale === 'en' ? 'en' : 'es';
@@ -174,6 +179,10 @@ export class ProcessWebsiteContactUseCase {
         const message = error instanceof Error ? error.message : String(error);
         console.error('[website_contact] internal alert failed:', message);
       }
+    }
+
+    if (!emails.internal && !emails.client && leadId.startsWith('web-')) {
+      throw new Error('Failed to process contact submission: both CRM and email delivery were unavailable.');
     }
 
     return { ok: true, leadId, action, emails };

@@ -415,6 +415,7 @@ export function startChatboxServer(deps: ChatboxServerDeps): Server {
           const result = await deps.processWebsiteContact.execute(parsed);
           json(res, 200, result);
         } catch (error) {
+          console.error('[website_contact] process error:', error);
           const mapped = publicApiError(error, deps.exposeErrorDetails);
           json(res, mapped.status, { error: mapped.message, code: mapped.code });
         }
