@@ -66,15 +66,21 @@ export class PgVectorKnowledgeBase implements IKnowledgeBase {
     const limit = this.options.defaultLimit ?? 6;
     const vector = toVectorLiteral(embedding);
 
+    // Defensa en profundidad: si quien consulta no pide expresamente material
+    // interno, se excluye aunque el fragmento estuviera etiquetado con ambas
+    // cosas. `tags @> $2` por sí solo dejaría pasar un chunk con ['public','internal'].
+    const excludeInternal = !(tags ?? []).includes('internal');
+
     const result = tags && tags.length > 0
       ? await this.pool.query<KnowledgeRow>(
           `SELECT id, content, source, tags,
                   1 - (embedding <=> $1::vector) AS score
            FROM knowledge_chunks
            WHERE tags @> $2::text[]
+             AND ($4::boolean IS FALSE OR NOT (tags @> ARRAY['internal']::text[]))
            ORDER BY embedding <=> $1::vector
            LIMIT $3`,
-          [vector, tags, limit],
+          [vector, tags, limit, excludeInternal],
         )
       : await this.pool.query<KnowledgeRow>(
           `SELECT id, content, source, tags,

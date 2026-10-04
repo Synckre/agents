@@ -2,8 +2,8 @@ import { SchedulingPolicy } from '@core/domain/scheduling-policy';
 
 /**
  * Puerto para obtener y actualizar la política de disponibilidad y horarios comerciales.
- * Puede implementarse leyendo de ERPNext (Appointment Booking Settings + Holiday List),
- * de base de datos o de configuración estática.
+ * Se implementa con configuración estática (variables de entorno), con base de datos
+ * o con cualquier proveedor remoto.
  */
 export interface ISchedulingPolicyProvider {
   /**

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { IKnowledgeBase } from '@core/ports/knowledge-base.port';
 import { ITool } from '@core/ports/tool.port';
+import { safeToolError } from './tool-error';
 
 const PUBLIC_TAG = 'public';
 
@@ -38,7 +39,7 @@ export class SearchKnowledgeBaseTool implements ITool {
         })),
       };
     } catch (error) {
-      return { ok: false, error: error instanceof Error ? error.message : 'Knowledge search failed' };
+      return { ok: false, error: safeToolError(error, 'Knowledge search failed') };
     }
   }
 }

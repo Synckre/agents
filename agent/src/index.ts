@@ -41,6 +41,18 @@ async function bootstrap(): Promise<void> {
   console.log(`front_agent server listening on ${env.HOST}:${listenPort} (/health, /api/copilotkit, /api/v1/public/contact) (${env.NODE_ENV})`);
   console.log(`LLM: ${env.LLM_PROVIDER} / ${env.LLM_MODEL}`);
 
+  // Se registran los orígenes permitidos a propósito: si el formulario del sitio
+  // recibe un 403 "Origin not allowed", esta línea dice exactamente qué falta.
+  const corsOrigins = env.CORS_ORIGIN.split(',').map((origin) => origin.trim()).filter(Boolean);
+  console.log(
+    `CORS (formulario web): ${corsOrigins.length > 0 ? corsOrigins.join(', ') : '(ninguno: el formulario será rechazado)'}`,
+  );
+  if (env.NODE_ENV === 'production' && !corsOrigins.some((o) => o.startsWith('https://'))) {
+    console.warn(
+      '[warn] Ningún origen https está permitido en CORS_ORIGIN: el formulario del sitio recibirá 403.',
+    );
+  }
+
   const shutdown = async (): Promise<void> => {
     server.close();
     await system.close();

@@ -360,9 +360,12 @@ export class ErpNextSchedulingAdapter implements ISchedulingPolicyProvider, IApp
 
   private async request(path: string, init: RequestInit = {}): Promise<Response> {
     const encodedPath = encodeURI(path);
-    const url = `${this.config.baseUrl?.replace(/\/$/, '')}${encodedPath}`;
+    const baseUrl = this.config.baseUrl?.trim().replace(/\/+$/, '');
+    const apiKey = (this.config.apiKey ?? '').trim().replace(/^["']|["']$/g, '').replace(/\r?\n|\r/g, '');
+    const apiSecret = (this.config.apiSecret ?? '').trim().replace(/^["']|["']$/g, '').replace(/\r?\n|\r/g, '');
+    const url = `${baseUrl}${encodedPath}`;
     const headers = new Headers(init.headers);
-    headers.set('Authorization', `token ${this.config.apiKey}:${this.config.apiSecret}`);
+    headers.set('Authorization', `token ${apiKey}:${apiSecret}`);
     headers.set('Accept', 'application/json');
     if (init.body && !headers.has('Content-Type')) {
       headers.set('Content-Type', 'application/json');

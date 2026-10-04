@@ -32,7 +32,7 @@ describe('AppendLeadNoteTool', () => {
     expect(mockCrm.appendLeadNote).not.toHaveBeenCalled();
   });
 
-  it('guarda la nota en ERPNext cuando hay un lead vinculado', async () => {
+  it('guarda la nota en el CRM cuando hay un lead vinculado', async () => {
     const memory = new InMemoryStore();
     const conv = new Conversation({ id: 'c1', messages: [] }).bindLead('CRM-LEAD-100');
     await memory.save(conv);
@@ -56,6 +56,11 @@ describe('AppendLeadNoteTool', () => {
     const res = await tool.execute({ note: 'Presupuesto estimado: $5,000 USD' });
 
     expect(res).toMatchObject({ ok: true, leadId: 'CRM-LEAD-100' });
-    expect(mockCrm.appendLeadNote).toHaveBeenCalledWith('CRM-LEAD-100', 'Presupuesto estimado: $5,000 USD');
+    // La nota se envía con el hilo de conversación para poder agrupar en el CRM
+    // todas las notas generadas por este mismo chat.
+    expect(mockCrm.appendLeadNote).toHaveBeenCalledWith('CRM-LEAD-100', {
+      body: 'Presupuesto estimado: $5,000 USD',
+      threadId: 'c1',
+    });
   });
 });

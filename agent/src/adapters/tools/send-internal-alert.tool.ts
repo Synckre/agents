@@ -3,6 +3,7 @@ import { IEmailSender } from '@core/ports/email-sender.port';
 import { ITool } from '@core/ports/tool.port';
 import { buildInternalAlertTemplatePayload } from '@adapters/email/resend-templates.config';
 import { getBoundLeadId, IToolContext, loadConversation } from './tool-context';
+import { safeToolError } from './tool-error';
 
 const inputSchema = z.object({
   subject: z.string().min(1).describe('Brief subject or headline of the internal alert/notice.'),
@@ -72,7 +73,7 @@ export class SendInternalAlertTool implements ITool {
         action: actionTitle,
       };
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to send internal alert';
+      const message = safeToolError(error, 'Failed to send internal alert');
       console.error('[send_internal_alert] Error:', message);
       return { ok: false, error: message };
     }

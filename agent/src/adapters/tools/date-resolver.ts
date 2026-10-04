@@ -1,3 +1,5 @@
+import { UserFacingError } from '@core/domain/user-facing-error';
+
 export interface ResolveDateOptions {
   readonly defaultDurationMinutes?: number;
   readonly timeZone?: string;
@@ -61,7 +63,7 @@ export function resolveAppointmentRange(
   const start = new Date(startIsoWithTz);
 
   if (Number.isNaN(start.getTime())) {
-    throw new Error(`Invalid start date: "${rawStart}". Expected valid ISO-8601 string.`);
+    throw new UserFacingError(`Invalid start date: "${rawStart}". Expected valid ISO-8601 string.`);
   }
 
   // Corrección determinista de año (si el LLM usó un año anterior por sesgo de entrenamiento)
@@ -102,7 +104,7 @@ export function resolveAppointmentRange(
 
   // Validación contra fechas en el pasado (con margen de tolerancia de 10 minutos)
   if (!options.allowPast && start.getTime() < now.getTime() - 10 * 60_000) {
-    throw new Error('Cannot book appointments in the past. Please choose an upcoming date and time.');
+    throw new UserFacingError('Cannot book appointments in the past. Please choose an upcoming date and time.');
   }
 
   return {

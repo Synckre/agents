@@ -15,6 +15,7 @@ import {
   loadConversation,
   removeBookedAppointment,
 } from './tool-context';
+import { safeToolError } from './tool-error';
 
 const inputSchema = z.object({
   appointmentId: z.string().optional().describe('ID of the appointment to cancel (must belong to this chat session)'),
@@ -24,7 +25,7 @@ const inputSchema = z.object({
 export type CancelAppointmentInput = z.infer<typeof inputSchema>;
 
 /**
- * Cancela una cita existente de Google Calendar y ERPNext, restringido estrictamente a las citas
+ * Cancela una cita existente de Google Calendar y del CRM, restringido estrictamente a las citas
  * agendadas en ESTA conversación (aislamiento de seguridad por sesión).
  * Además, envía automáticamente el correo con la plantilla de cancelación y el .ics con METHOD: CANCEL.
  */
@@ -75,9 +76,12 @@ export class CancelAppointmentTool implements ITool {
       await this.calendar.cancelAppointment(targetAppointment.id);
       if (this.appointmentRepo) {
         try {
-          await this.appointmentRepo.cancelAppointment(targetAppointment.id);
+          // Se prefiere el id del CRM; el id del calendario es el fallback.
+          await this.appointmentRepo.cancelAppointment(
+            targetAppointment.crmAppointmentId ?? targetAppointment.id,
+          );
         } catch (erpErr) {
-          console.warn('[cancel_appointment] Could not cancel Appointment in ERPNext:', erpErr);
+          console.warn('[cancel_appointment] Could not cancel the appointment in the CRM:', erpErr);
         }
       }
       await removeBookedAppointment(this.ctx, targetAppointment.id);
@@ -188,7 +192,7 @@ export class CancelAppointmentTool implements ITool {
           : 'Appointment successfully cancelled.',
       };
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Cancellation failed';
+      const message = safeToolError(error, 'Cancellation failed');
       console.error('[cancel_appointment] Error:', message);
       return { ok: false, error: message };
     }

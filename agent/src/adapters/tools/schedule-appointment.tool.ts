@@ -20,6 +20,7 @@ import {
   loadConversation,
   patchConversation,
 } from './tool-context';
+import { safeToolError } from './tool-error';
 
 const inputSchema = z.object({
   start: z.string().min(1).describe('ISO-8601 start of the appointment'),
@@ -35,7 +36,7 @@ const inputSchema = z.object({
 export type ScheduleAppointmentInput = z.infer<typeof inputSchema>;
 
 /**
- * Crea un evento en Google Calendar y persiste el Appointment en ERPNext,
+ * Crea un evento en Google Calendar y persiste la cita en el CRM,
  * con tope de citas por conversación, programa recordatorio automático y alerta al equipo interno.
  */
 export class ScheduleAppointmentTool implements ITool {
@@ -52,6 +53,18 @@ export class ScheduleAppointmentTool implements ITool {
     private readonly internalAlertEmail?: string,
     private readonly appointmentRepo?: IAppointmentRepository,
   ) {}
+
+  /**
+   * Duración efectiva de la cita, derivada del rango ya validado.
+   * Se persiste en el CRM para que la cita registrada refleje el mismo bloque
+   * horario que el evento de Google Calendar.
+   */
+  private resolveDurationMinutes(range: { startIso: string; endIso: string }): number {
+    const diff = new Date(range.endIso).getTime() - new Date(range.startIso).getTime();
+    if (!Number.isFinite(diff) || diff <= 0) return 30;
+    const minutes = Math.round(diff / 60_000);
+    return minutes > 0 && minutes <= 240 ? minutes : 30;
+  }
 
   async execute(input: unknown): Promise<unknown> {
     const parsed = inputSchema.safeParse(input);
@@ -101,11 +114,12 @@ export class ScheduleAppointmentTool implements ITool {
         title: parsed.data.title,
       });
 
-      // Persistencia en ERPNext (DocType Appointment vinculado al Lead)
+      // Persistencia de la cita en el CRM, asociada al Lead de la conversación
       const boundLeadId = getBoundLeadId(conversation);
+      let crmAppointmentId: string | undefined;
       if (this.appointmentRepo) {
         try {
-          await this.appointmentRepo.createAppointment({
+          const persisted = await this.appointmentRepo.createAppointment({
             scheduledTime: appointment.start,
             customerName: appointment.attendeeName,
             email: verifiedEmail,
@@ -113,9 +127,14 @@ export class ScheduleAppointmentTool implements ITool {
             calendarEventId: appointment.id,
             notes: parsed.data.notes,
             appointmentType: parsed.data.appointmentType,
+            durationMinutes: this.resolveDurationMinutes(range),
           });
+          // Se guarda el id del CRM para que cancelar/reprogramar no tengan que
+          // traducir el id del calendario (esa traducción depende de propiedades
+          // personalizadas que pueden no existir en el portal).
+          crmAppointmentId = persisted?.id;
         } catch (erpError) {
-          console.warn('[schedule_appointment] Failed to persist Appointment in ERPNext:', erpError);
+          console.warn('[schedule_appointment] Failed to persist the appointment in the CRM:', erpError);
         }
       }
 
@@ -130,6 +149,7 @@ export class ScheduleAppointmentTool implements ITool {
           attendeeName: appointment.attendeeName,
           attendeeEmail: appointment.attendeeEmail,
           meetLink: appointment.meetLink,
+          ...(crmAppointmentId ? { crmAppointmentId } : {}),
         });
         count = updated.getAppointmentCount();
         return updated;
@@ -208,7 +228,7 @@ export class ScheduleAppointmentTool implements ITool {
 
       return { ok: true, appointment, appointmentCount: count, confirmed };
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Scheduling failed';
+      const message = safeToolError(error, 'Scheduling failed');
       console.error('[schedule_appointment] Error:', message);
       return { ok: false, error: message };
     }

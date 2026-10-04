@@ -1,3 +1,14 @@
+# Los patrones sin comodin solo casan en la raiz del contexto de build.
+# node_modules / dist / .env se repiten a cualquier profundidad para que no se
+# cuelen en la imagen (p. ej. chainlit/.env o chainlit/.venv).
+**/node_modules
+**/dist
+**/.env
+**/.env.*
+**/.venv
+**/__pycache__
+**/.pytest_cache
+**/*.pyc
 node_modules
 dist
 .env

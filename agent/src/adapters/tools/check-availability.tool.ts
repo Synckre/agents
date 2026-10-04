@@ -9,6 +9,7 @@ import {
   ExistingBooking,
 } from '@core/domain/scheduling/compute-available-slots';
 import { resolveAppointmentRange } from './date-resolver';
+import { safeToolError } from './tool-error';
 
 const inputSchema = z.object({
   start: z.string().min(1).describe('ISO-8601 start of the search window'),
@@ -24,9 +25,9 @@ export type CheckAvailabilityInput = z.infer<typeof inputSchema>;
 
 /**
  * Consulta horarios disponibles reales orquestando:
- * 1. Política de agendamiento y horarios comerciales de ERPNext (o fallback).
+ * 1. Política de agendamiento y horarios comerciales configurados.
  * 2. Eventos ocupados en Google Calendar.
- * 3. Citas agendadas en ERPNext.
+ * 3. Citas agendadas en el CRM.
  * 4. Cálculo determinista puro en core/domain (computeAvailableSlots).
  */
 export class CheckAvailabilityTool implements ITool {
@@ -50,7 +51,7 @@ export class CheckAvailabilityTool implements ITool {
     try {
       const range = resolveAppointmentRange(parsed.data.start, parsed.data.end);
 
-      // 1. Obtener la política (ERPNext Appointment Booking Settings / Holiday List o default)
+      // 1. Obtener la política de agendamiento configurada (o el fallback por defecto)
       const policy = this.policyProvider
         ? await this.policyProvider.getPolicy()
         : DEFAULT_SCHEDULING_POLICY;
@@ -68,7 +69,7 @@ export class CheckAvailabilityTool implements ITool {
         console.warn('[check_availability] Failed to query Google Calendar busy blocks:', calError);
       }
 
-      // 3. Obtener citas agendadas en ERPNext (DocType Appointment)
+      // 3. Obtener citas agendadas en el CRM
       let erpAppointments: ExistingBooking[] = [];
       if (this.appointmentRepo) {
         try {
@@ -83,7 +84,7 @@ export class CheckAvailabilityTool implements ITool {
             };
           });
         } catch (erpError) {
-          console.warn('[check_availability] Failed to query ERPNext appointments:', erpError);
+          console.warn('[check_availability] Failed to query CRM appointments:', erpError);
         }
       }
 
@@ -102,7 +103,7 @@ export class CheckAvailabilityTool implements ITool {
         timezone: policy.timezone,
       };
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Availability lookup failed';
+      const message = safeToolError(error, 'Availability lookup failed');
       console.error('[check_availability] Error:', message);
       return { ok: false, error: message };
     }

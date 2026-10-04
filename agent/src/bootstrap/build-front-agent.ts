@@ -60,6 +60,9 @@ export function buildFrontAgent(deps: BuildFrontAgentDeps): { agent: FrontAgent 
     {
       maxIterations: env.MAX_TOOL_ITERATIONS,
       timeZone: env.GOOGLE_CALENDAR_TIMEZONE,
+      // Los datos de la política de agendamiento viajan en el prompt para que el
+      // modelo no los invente, sin perjuicio del FAQ que también se ingiere.
+      policyProvider: deps.scheduling,
     },
   );
 

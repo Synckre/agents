@@ -4,6 +4,10 @@ import {
   buildClientMessageTemplatePayload,
   buildInternalAlertTemplatePayload,
 } from '@adapters/email/resend-templates.config';
+import {
+  buildWebsiteContactAck,
+  SYNCKRE_CONTACT_EMAIL,
+} from '@core/domain/website-contact-ack';
 
 export interface WebsiteContactInput {
   readonly name: string;
@@ -19,6 +23,8 @@ export interface WebsiteContactResult {
   readonly ok: true;
   readonly leadId: string;
   readonly action: 'created' | 'updated';
+  /** false si el CRM no llegó a persistir nada (el leadId es solo un marcador). */
+  readonly crmPersisted: boolean;
   readonly emails: {
     readonly client: boolean;
     readonly internal: boolean;
@@ -87,16 +93,25 @@ export class ProcessWebsiteContactUseCase {
   async execute(input: WebsiteContactInput): Promise<WebsiteContactResult> {
     const fields = {
       name: input.name,
+      ...(input.company ? { companyName: input.company } : {}),
       email: input.email,
       ...(input.phone ? { phone: input.phone } : {}),
+      source: 'Website',
+      notes: noteFrom(input),
       data: {
         source: 'Website',
         ...(input.company ? { company_name: input.company } : {}),
+        ...(input.topic ? { topic: input.topic } : {}),
+        // El mensaje crudo del cliente se guarda además en el campo nativo
+        // `message` del contacto: es visible en la vista estándar de HubSpot y
+        // no depende de ninguna propiedad personalizada.
+        message: input.message,
       },
     };
 
     let leadId = `web-${Date.now()}`;
     let action: 'created' | 'updated' = 'created';
+    let crmPersisted = false;
 
     try {
       const existing = await this.crm.findLead({
@@ -109,17 +124,15 @@ export class ProcessWebsiteContactUseCase {
         leadId = updated.id;
         action = 'updated';
       } else {
-        const created = await this.crm.createLead({
-          ...fields,
-          data: {
-            ...fields.data,
-            notes: noteFrom(input),
-          },
-        });
+        const created = await this.crm.createLead(fields);
         leadId = created.id;
         action = 'created';
       }
 
+      crmPersisted = true;
+
+      // En un alta, la nota viaja dentro de `fields.notes` y el adaptador la
+      // registra al crear. Sólo en una actualización hay que añadirla aparte.
       if (action === 'updated') {
         await this.crm.appendLeadNote(leadId, noteFrom(input));
       }
@@ -128,25 +141,37 @@ export class ProcessWebsiteContactUseCase {
       console.error('[website_contact] CRM lead creation failed (proceeding to send notification emails):', message);
     }
 
-    const lang = input.locale === 'en' ? 'en' : 'es';
     const emails = { client: false, internal: false };
 
+    // El acuse se envía en el idioma en el que el cliente rellenó el formulario.
+    const locale: 'es' | 'en' = input.locale === 'en' ? 'en' : 'es';
+
     try {
+      const ack = buildWebsiteContactAck(
+        {
+          name: input.name,
+          email: input.email,
+          ...(input.company ? { company: input.company } : {}),
+          ...(input.topic ? { topic: input.topic } : {}),
+        },
+        locale,
+      );
+
       const client = buildClientMessageTemplatePayload(
         {
-          title: lang === 'es' ? 'Hemos recibido su mensaje' : 'We received your message',
-          message:
-            lang === 'es'
-              ? `Hola ${input.name},\n\nGracias por escribir a Synckre. Hemos registrado su consulta y el equipo responderá a ${input.email}.`
-              : `Hello ${input.name},\n\nThank you for contacting Synckre. We logged your inquiry and the team will reply at ${input.email}.`,
-          ctaLink: 'https://www.synckre.com/contact',
-          ctaText: lang === 'es' ? 'Contactar de nuevo' : 'Contact again',
+          title: ack.title,
+          message: ack.message,
+          ctaLink: ack.ctaLink,
+          ctaText: ack.ctaText,
         },
-        lang,
+        locale,
       );
+
       await this.email.send({
         to: input.email,
-        subject: lang === 'es' ? 'Synckre ha recibido su mensaje' : 'Synckre received your message',
+        from: `Synckre <${SYNCKRE_CONTACT_EMAIL}>`,
+        replyTo: SYNCKRE_CONTACT_EMAIL,
+        subject: ack.subject,
         templateId: client.templateId,
         variables: client.variables,
       });
@@ -158,19 +183,32 @@ export class ProcessWebsiteContactUseCase {
 
     if (this.internalAlertEmail) {
       try {
+        const detailsLines = [
+          `• Cliente: ${input.name}`,
+          `• Correo: ${input.email}`,
+          input.company ? `• Empresa: ${input.company}` : null,
+          input.phone ? `• Teléfono: ${input.phone}` : null,
+          input.topic ? `• Asunto / Servicio: ${input.topic}` : null,
+          '',
+          `• Mensaje del cliente:\n"${input.message}"`,
+        ]
+          .filter((line) => line !== null)
+          .join('\n');
+
         const alert = buildInternalAlertTemplatePayload({
-          action: 'Website contact form',
+          action: 'Nuevo mensaje de contacto web',
           attendeeName: input.name,
           attendeeEmail: input.email,
-          notes: noteFrom(input),
-          summary: `${input.name} (${input.email}) submitted the website form.`,
-          reason: input.topic || 'Website form',
+          customDetails: detailsLines,
+          summary: `${input.name} (${input.email}) ha enviado un mensaje desde el formulario web de synckre.com.`,
           conversationId: `form:${leadId}`,
-          hostName: 'Synckre Team',
+          hostName: 'Equipo Synckre',
         });
         await this.email.send({
           to: this.internalAlertEmail,
-          subject: `[Synckre Alert] Website form — ${input.name}`,
+          from: 'Synckre <customer@synckre.com>',
+          replyTo: input.email,
+          subject: `[Synckre] Nuevo contacto web — ${input.name}`,
           templateId: alert.templateId,
           variables: alert.variables,
         });
@@ -181,10 +219,20 @@ export class ProcessWebsiteContactUseCase {
       }
     }
 
-    if (!emails.internal && !emails.client && leadId.startsWith('web-')) {
-      throw new Error('Failed to process contact submission: both CRM and email delivery were unavailable.');
+    // Si no se pudo enviar ningún correo, la petición es un fallo total.
+    if (!emails.internal && !emails.client) {
+      throw new Error('Failed to process contact submission: CRM and email delivery were unavailable.');
     }
 
-    return { ok: true, leadId, action, emails };
+    // Si el CRM falló pero algún correo salió, se devuelve ok con
+    // `crmPersisted: false` en lugar de un `action: 'created'` engañoso: el
+    // llamador debe poder distinguir "guardado" de "solo notificado".
+    return {
+      ok: true,
+      leadId,
+      action: crmPersisted ? action : 'created',
+      crmPersisted,
+      emails,
+    };
   }
 }

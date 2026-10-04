@@ -18,6 +18,7 @@ import {
   loadConversation,
   updateBookedAppointment,
 } from './tool-context';
+import { safeToolError } from './tool-error';
 
 const inputSchema = z.object({
   start: z.string().min(1).describe('ISO-8601 new start time for the appointment'),
@@ -28,7 +29,7 @@ const inputSchema = z.object({
 export type RescheduleAppointmentInput = z.infer<typeof inputSchema>;
 
 /**
- * Reprograma una cita existente de Google Calendar y ERPNext, restringido estrictamente a las citas
+ * Reprograma una cita existente de Google Calendar y del CRM, restringido estrictamente a las citas
  * agendadas en ESTA conversación (aislamiento de seguridad por sesión).
  * Además, envía automáticamente el correo con la plantilla de reagendamiento y el .ics actualizado.
  */
@@ -95,9 +96,13 @@ export class RescheduleAppointmentTool implements ITool {
 
       if (this.appointmentRepo) {
         try {
-          await this.appointmentRepo.rescheduleAppointment(targetAppointment.id, range.startIso);
+          // Se prefiere el id del CRM; el id del calendario es el fallback.
+          await this.appointmentRepo.rescheduleAppointment(
+            targetAppointment.crmAppointmentId ?? targetAppointment.id,
+            range.startIso,
+          );
         } catch (erpErr) {
-          console.warn('[reschedule_appointment] Could not reschedule Appointment in ERPNext:', erpErr);
+          console.warn('[reschedule_appointment] Could not reschedule the appointment in the CRM:', erpErr);
         }
       }
 
@@ -248,7 +253,7 @@ export class RescheduleAppointmentTool implements ITool {
           : 'Appointment successfully rescheduled.',
       };
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Rescheduling failed';
+      const message = safeToolError(error, 'Rescheduling failed');
       console.error('[reschedule_appointment] Error:', message);
       return { ok: false, error: message };
     }

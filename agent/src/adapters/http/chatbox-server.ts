@@ -283,6 +283,13 @@ export function startChatboxServer(deps: ChatboxServerDeps): Server {
           json(res, 200, { ok: true, driver: 'unified' });
           return;
         }
+        // `/ready` consulta la base de datos en cada llamada y no requiere
+        // credencial. Sin límite, cualquiera podría saturar el pool. `/health`
+        // se deja sin limitar a propósito: es barato y lo usan los healthchecks.
+        if (!limiter.allow(`ready:${ip}`)) {
+          json(res, 429, { error: 'Rate limit reached', code: 'rate_limit_exceeded' });
+          return;
+        }
         if (deps.checkReady) {
           try {
             await deps.checkReady();

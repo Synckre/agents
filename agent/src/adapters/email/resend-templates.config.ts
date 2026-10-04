@@ -339,32 +339,34 @@ export interface InternalAlertEmailData {
   readonly conversationId?: string;
   readonly summary?: string;
   readonly hostName?: string;
+  readonly customDetails?: string;
 }
 
 export function buildInternalAlertTemplatePayload(
   data: InternalAlertEmailData,
 ): { templateId: string; variables: Record<string, string> } {
-  const action = data.action ?? 'Internal Alert';
+  const action = data.action ?? 'Alerta interna';
   const timeZone = data.timeZone ?? 'America/New_York';
-  const details = [
-    data.attendeeName ? `Cliente: ${data.attendeeName}` : null,
-    data.attendeeEmail ? `Email: ${data.attendeeEmail}` : null,
-    data.start
-      ? `Fecha: ${data.start.toLocaleDateString('es-ES', { timeZone, weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}`
-      : null,
-    data.start && data.end
-      ? `Hora: ${data.start.toLocaleTimeString('es-ES', { timeZone, hour: 'numeric', minute: '2-digit', hour12: true })} – ${data.end.toLocaleTimeString('es-ES', { timeZone, hour: 'numeric', minute: '2-digit', hour12: true })}`
-      : null,
-    data.previousStart
-      ? `Antes: ${data.previousStart.toLocaleDateString('es-ES', { timeZone, weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}`
-      : null,
-    data.meetLink ? `Meet: ${data.meetLink}` : null,
-    data.reason ? `Motivo: ${data.reason}` : null,
-    data.notes ? `Notas: ${data.notes}` : null,
-    data.summary ? `Resumen: ${data.summary}` : null,
-  ]
-    .filter((line): line is string => Boolean(line))
-    .join('\n');
+  const details =
+    data.customDetails ||
+    [
+      data.attendeeName ? `Cliente: ${data.attendeeName}` : null,
+      data.attendeeEmail ? `Email: ${data.attendeeEmail}` : null,
+      data.start
+        ? `Fecha: ${data.start.toLocaleDateString('es-ES', { timeZone, weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}`
+        : null,
+      data.start && data.end
+        ? `Hora: ${data.start.toLocaleTimeString('es-ES', { timeZone, hour: 'numeric', minute: '2-digit', hour12: true })} – ${data.end.toLocaleTimeString('es-ES', { timeZone, hour: 'numeric', minute: '2-digit', hour12: true })}`
+        : null,
+      data.previousStart
+        ? `Antes: ${data.previousStart.toLocaleDateString('es-ES', { timeZone, weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}`
+        : null,
+      data.meetLink ? `Meet: ${data.meetLink}` : null,
+      data.reason ? `Motivo: ${data.reason}` : null,
+      data.notes ? `Notas: ${data.notes}` : null,
+    ]
+      .filter((line): line is string => Boolean(line))
+      .join('\n');
 
   return {
     templateId: RESEND_TEMPLATES.INTERNAL_ALERT,

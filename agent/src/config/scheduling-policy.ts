@@ -1,20 +1,28 @@
 import { SchedulingPolicy } from '@core/domain/scheduling-policy';
 
 /**
+ * Horario comercial por defecto de Synckre.
+ * Es la base sobre la que `ConfigSchedulingPolicyProvider` aplica la configuración de
+ * entorno (SCHEDULING_BUSINESS_HOURS), y también el fallback determinista.
+ */
+export const DEFAULT_BUSINESS_HOURS: SchedulingPolicy['hoursByWeekday'] = {
+  mon: { open: '09:00', close: '18:00' },
+  tue: { open: '09:00', close: '18:00' },
+  wed: { open: '09:00', close: '18:00' },
+  thu: { open: '09:00', close: '18:00' },
+  fri: { open: '09:00', close: '18:00' },
+  sat: null,
+  sun: null,
+};
+
+/**
  * Política de disponibilidad por defecto de Synckre.
- * Sirve de fallback offline o cuando los ajustes de ERPNext aún no han sido cargados.
+ * No depende de red: la configuración vive en variables de entorno (SCHEDULING_*)
+ * y este objeto es el fallback cuando no hay configuración explícita.
  */
 export const DEFAULT_SCHEDULING_POLICY: SchedulingPolicy = {
-  timezone: process.env.GOOGLE_CALENDAR_TIMEZONE || 'America/New_York',
-  hoursByWeekday: {
-    mon: { open: '09:00', close: '18:00' },
-    tue: { open: '09:00', close: '18:00' },
-    wed: { open: '09:00', close: '18:00' },
-    thu: { open: '09:00', close: '18:00' },
-    fri: { open: '09:00', close: '18:00' },
-    sat: null,
-    sun: null,
-  },
+  timezone: process.env.SCHEDULING_TIMEZONE || process.env.GOOGLE_CALENDAR_TIMEZONE || 'America/New_York',
+  hoursByWeekday: DEFAULT_BUSINESS_HOURS,
   holidays: [
     // Feriados federales estándar EEUU (año en curso / base)
     '2026-01-01', // New Year's Day

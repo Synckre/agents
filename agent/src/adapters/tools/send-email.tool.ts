@@ -13,6 +13,7 @@ import {
   isAllowedEmail,
   loadConversation,
 } from './tool-context';
+import { safeToolError } from './tool-error';
 
 const inputSchema = z.object({
   to: z.string().email(),
@@ -166,7 +167,7 @@ export class SendEmailTool implements ITool {
       };
     } catch (error) {
       console.error('[send_email] Error:', error);
-      return { ok: false, error: error instanceof Error ? error.message : 'Email send failed' };
+      return { ok: false, error: safeToolError(error, 'Email send failed') };
     }
   }
 }

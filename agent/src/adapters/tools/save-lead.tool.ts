@@ -11,6 +11,7 @@ import {
   loadConversation,
   registerEmails,
 } from './tool-context';
+import { safeToolError } from './tool-error';
 
 const inputSchema = z.object({
   name: z.string().min(1),
@@ -28,7 +29,7 @@ export type SaveLeadInput = z.infer<typeof inputSchema>;
 export class SaveLeadTool implements ITool {
   readonly name = 'save_lead';
   readonly description =
-    'Create or update the Lead/Contact in ERPNext for THIS conversation only. Collect name, email and phone in normal chat first, then call this tool. Never pass an arbitrary lead id.';
+    'Create or update the Lead/Contact in the CRM for THIS conversation only. Collect name, email and phone in normal chat first, then call this tool. Never pass an arbitrary lead id.';
   readonly schema = inputSchema;
 
   constructor(
@@ -55,6 +56,8 @@ export class SaveLeadTool implements ITool {
       data: {
         ...(parsed.data.notes ? { notes: parsed.data.notes } : {}),
         ...(parsed.data.company ? { company_name: parsed.data.company } : {}),
+        // Permite agrupar en el CRM las notas generadas por esta conversación.
+        conversation_id: this.ctx.conversationId,
       },
     };
 
@@ -77,7 +80,7 @@ export class SaveLeadTool implements ITool {
       await registerEmails(this.ctx, [created.email, verifiedEmail]);
       return { ok: true, lead: created, action: 'created', confirmed };
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'CRM save failed';
+      const message = safeToolError(error, 'CRM save failed');
       console.error('[save_lead] Error:', message);
       return { ok: false, error: message };
     }

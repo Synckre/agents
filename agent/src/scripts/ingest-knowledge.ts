@@ -65,13 +65,23 @@ async function listFiles(dir: string): Promise<string[]> {
   return files;
 }
 
-function inferTag(filePath: string, override?: string): string {
+/**
+ * Decide la etiqueta de un documento.
+ *
+ * SEGURIDAD: un fichero que vive bajo `internal/` es SIEMPRE interno y no puede
+ * reclasificarse con `--tag`. Sin esta salvaguarda, `npm run ingest -- --tag public`
+ * etiquetaría los documentos internos como públicos y los expondría en el chat del
+ * sitio. Además el identificador del fragmento no incluye la etiqueta, así que
+ * reingerir con otro tag SOBRESCRIBE el anterior: la fuga sería silenciosa.
+ */
+export function inferTag(filePath: string, override?: string): string {
+  const normalized = filePath.replace(/\\/g, '/').toLowerCase();
+  const isInternalPath = /(^|\/)internal\//.test(normalized);
+  if (isInternalPath) {
+    return 'internal';
+  }
   if (override) {
     return override;
-  }
-  const normalized = filePath.replace(/\\/g, '/').toLowerCase();
-  if (normalized.includes('/internal/')) {
-    return 'internal';
   }
   return 'public';
 }

@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { IFollowupScheduler } from '@core/ports/followup-scheduler.port';
 import { ITool } from '@core/ports/tool.port';
 import { getBoundLeadId, IToolContext, loadConversation } from './tool-context';
+import { safeToolError } from './tool-error';
 
 const inputSchema = z
   .object({
@@ -90,7 +91,7 @@ export class ScheduleFollowupTool implements ITool {
         language: parsed.data.language,
       };
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to schedule followup';
+      const message = safeToolError(error, 'Failed to schedule followup');
       console.error('[schedule_followup] Error:', message);
       return { ok: false, error: message };
     }

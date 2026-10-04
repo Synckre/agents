@@ -66,6 +66,52 @@ CREATE INDEX IF NOT EXISTS scheduled_followups_appt_idx
   ON scheduled_followups (appointment_id)
   WHERE appointment_id IS NOT NULL;
 
+-- =============================================================================
+-- Política de agendamiento (configurable en base de datos)
+--
+-- Diseñada como tablas de filas editables, no como un JSON monolítico, para que
+-- un panel de configuración pueda editar cada día, cada tipo de cita y cada
+-- festivo por separado sin reescribir el resto de la política.
+--
+-- Autoridad: si existe la fila de scheduling_settings, la base de datos manda.
+-- Si no existe, se usan los valores por defecto del código (así el sistema
+-- funciona antes de que nadie configure nada).
+-- =============================================================================
+
+CREATE TABLE IF NOT EXISTS scheduling_settings (
+  -- Fila única: el identificador siempre es 'default'.
+  id TEXT PRIMARY KEY,
+  timezone TEXT NOT NULL,
+  max_appointments_per_day INT,
+  slot_interval_minutes INT,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS scheduling_business_hours (
+  -- Un registro por día de la semana (mon..sun).
+  weekday TEXT PRIMARY KEY,
+  is_open BOOLEAN NOT NULL DEFAULT false,
+  open_time TEXT,
+  close_time TEXT,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS scheduling_appointment_types (
+  id TEXT PRIMARY KEY,
+  name TEXT,
+  duration_minutes INT NOT NULL CHECK (duration_minutes > 0),
+  max_concurrent INT NOT NULL DEFAULT 1 CHECK (max_concurrent > 0),
+  enabled BOOLEAN NOT NULL DEFAULT true,
+  sort_order INT NOT NULL DEFAULT 0,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS scheduling_holidays (
+  holiday_date DATE PRIMARY KEY,
+  description TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 CREATE TABLE IF NOT EXISTS tool_security_logs (
   id BIGSERIAL PRIMARY KEY,
   tool_name TEXT NOT NULL,

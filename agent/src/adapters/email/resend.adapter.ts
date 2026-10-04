@@ -10,6 +10,7 @@ export function buildResendApiPayload(
     from,
     to,
     subject: message.subject,
+    ...(message.replyTo ? { reply_to: message.replyTo } : {}),
   };
 
   if (!message.templateId) {

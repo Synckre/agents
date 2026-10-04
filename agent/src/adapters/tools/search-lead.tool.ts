@@ -10,6 +10,7 @@ import {
   loadConversation,
   registerEmails,
 } from './tool-context';
+import { safeToolError } from './tool-error';
 
 const inputSchema = z.object({
   email: z.string().email().optional(),
@@ -21,12 +22,12 @@ const inputSchema = z.object({
 export type SearchLeadInput = z.infer<typeof inputSchema>;
 
 /**
- * Busca un Lead/Contact en ERPNext. Nunca acepta un ID arbitrario.
+ * Busca un Lead/Contact en el CRM. Nunca acepta un ID arbitrario.
  */
 export class SearchLeadTool implements ITool {
   readonly name = 'search_lead';
   readonly description =
-    'Search ERPNext for an existing Lead/Contact by email and/or phone from this conversation. Use before save_lead to avoid duplicates and recover prior context.';
+    'Search the CRM for an existing Lead/Contact by email and/or phone from this conversation. Use before save_lead to avoid duplicates and recover prior context.';
   readonly schema = inputSchema;
 
   constructor(
@@ -69,7 +70,7 @@ export class SearchLeadTool implements ITool {
       await registerEmails(this.ctx, [found.email, verifiedEmail]);
       return { ok: true, lead: found, bound: true };
     } catch (error) {
-      return { ok: false, error: error instanceof Error ? error.message : 'CRM search failed' };
+      return { ok: false, error: safeToolError(error, 'CRM search failed') };
     }
   }
 }

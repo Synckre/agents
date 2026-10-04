@@ -1,7 +1,7 @@
 import { createPgPool } from '@adapters/persistence/create-pg-pool';
 import { PostgresFollowupScheduler } from '@adapters/persistence/postgres-followup-scheduler.adapter';
 import { ResendAdapter } from '@adapters/email/resend.adapter';
-import { ErpNextAdapter } from '@adapters/crm/erpnext.adapter';
+import { buildCrmAdapters } from './bootstrap/build-crm-adapters';
 import { createLlmProvider } from '@adapters/llm/create-llm-provider';
 import { FollowupCronWorker } from '@adapters/scheduling/followup-cron-worker';
 import { KnowledgeSyncCronWorker } from '@adapters/scheduling/knowledge-sync-cron-worker';
@@ -25,11 +25,9 @@ async function main(): Promise<void> {
     defaultFrom: env.EMAIL_FROM,
   });
 
-  const crm = new ErpNextAdapter({
-    baseUrl: env.ERPNEXT_URL,
-    apiKey: env.ERPNEXT_API_KEY,
-    apiSecret: env.ERPNEXT_API_SECRET,
-  });
+  // Mismo criterio de proveedor de CRM que el servidor (CRM_PROVIDER / CRM_WRITE_MODE).
+  const { crm, provider, writeMode } = buildCrmAdapters(pool);
+  console.log(`[Worker] CRM provider: ${provider} (write mode: ${writeMode})`);
 
   const llm = createLlmProvider();
 

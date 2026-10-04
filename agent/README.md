@@ -116,6 +116,57 @@ Copia el archivo de ejemplo y completa tus claves:
 cp .env.example .env
 ```
 
+#### CRM
+
+El agent persiste leads y citas en **HubSpot** a través del puerto `ICrm`, usando
+una Private App access token. Configuración mínima:
+
+```bash
+CRM_PROVIDER=hubspot          # 'erpnext' revierte al adaptador legacy
+CRM_WRITE_MODE=live           # 'dry_run' registra las escrituras sin aplicarlas
+HUBSPOT_PRIVATE_APP_TOKEN=pat-...
+HUBSPOT_API_BASE_URL=https://api.hubapi.com
+HUBSPOT_API_VERSION=2026-09
+```
+
+La **política de agendamiento** (horarios, tipos de cita, festivos y capacidad)
+vive en la **base de datos**, para poder administrarse desde un panel:
+
+```bash
+npm run scheduling:show              # política vigente y de dónde sale
+npm run scheduling:seed              # sembrar la BD desde el entorno
+npm run scheduling:seed -- --force   # sobrescribir
+```
+
+Las variables `SCHEDULING_*` son solo la semilla inicial y el respaldo mientras la
+base de datos no tenga política: una vez sembrada, **manda la base de datos**.
+
+El agent recibe la política de agendamiento vigente **inyectada en el prompt en cada
+turno**, así que no la adivina ni depende de que el buscador recupere el FAQ. El FAQ
+se genera desde la misma fuente:
+
+```bash
+npm run knowledge:faq        # regenera la sección del FAQ desde la política
+npm run ingest               # indexa knowledge/ en la base de conocimiento
+```
+
+El agent es un asistente **de la empresa**: rechaza peticiones ajenas al negocio
+(ayuda de programación, deberes, trivia) con un guard determinista antes de llamar
+al modelo. Ver la sección de alcance en el runbook.
+
+Antes de operar, verifica y prepara el portal:
+
+```bash
+npm run hubspot:verify       # solo comprueba token, scopes, propiedades y asociaciones
+npm run hubspot:bootstrap    # crea lo que falte (idempotente)
+npm run hubspot:smoke        # smoke test real, sin pasar por el LLM
+```
+
+> [!IMPORTANT]
+> La guía operativa completa (scopes, objeto de citas, límites de HubSpot, modo
+> dry-run, diagnóstico y rollback) está en
+> [`docs/hubspot-runbook.md`](docs/hubspot-runbook.md).
+
 ### 2. Ejecutar con Docker (Recomendado)
 
 Inicia el entorno de desarrollo con **hot-reload**:

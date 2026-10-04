@@ -4,6 +4,7 @@ import { IEmailSender } from '@core/ports/email-sender.port';
 import { ITool } from '@core/ports/tool.port';
 import { buildInternalAlertTemplatePayload } from '@adapters/email/resend-templates.config';
 import { IToolContext, loadConversation, patchConversation } from './tool-context';
+import { safeToolError } from './tool-error';
 
 const inputSchema = z.object({
   reason: z.string().min(1).describe('Why a human needs to take over'),
@@ -68,7 +69,7 @@ export class RequestHumanTool implements ITool {
     } catch (error) {
       return {
         ok: false,
-        error: error instanceof Error ? error.message : 'Failed to send internal alert',
+        error: safeToolError(error, 'Failed to send internal alert'),
       };
     }
 

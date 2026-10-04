@@ -71,11 +71,46 @@ describe('ProcessWebsiteContactUseCase', () => {
       ok: true,
       leadId: 'LEAD-1',
       action: 'created',
+      crmPersisted: true,
       emails: { client: true, internal: true },
     });
     expect(crm.createLead).toHaveBeenCalledOnce();
+    // El puerto debe recibir los datos del formulario de forma explícita, no
+    // enterrados en `data`, para que cualquier CRM pueda mapearlos.
+    expect(crm.createLead).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: 'Ada Lovelace',
+        email: 'ada@company.com',
+        companyName: 'Analytical Engines',
+        source: 'Website',
+      }),
+    );
     expect(crm.appendLeadNote).not.toHaveBeenCalled();
     expect(email.send).toHaveBeenCalledTimes(2);
+  });
+
+  it('propaga el asunto del formulario al CRM', async () => {
+    const crm: ICrm = {
+      findLead: vi.fn(async () => null),
+      getLeadById: vi.fn(async () => null),
+      createLead: vi.fn(async () => lead()),
+      updateLead: vi.fn(async () => lead()),
+      appendLeadNote: vi.fn(async () => undefined),
+    };
+    const email: IEmailSender = { send: vi.fn(async () => ({ id: 'msg_1' })) };
+
+    await new ProcessWebsiteContactUseCase(crm, email, '').execute({
+      name: 'Ada Lovelace',
+      email: 'ada@company.com',
+      message: 'Necesito una integración.',
+      topic: 'Integraciones',
+    });
+
+    expect(crm.createLead).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ topic: 'Integraciones', source: 'Website' }),
+      }),
+    );
   });
 
   it('actualiza un lead existente y añade nota', async () => {
@@ -131,8 +166,34 @@ describe('ProcessWebsiteContactUseCase', () => {
     });
 
     expect(result.ok).toBe(true);
-    expect(result.action).toBe('created');
     expect(result.emails).toEqual({ client: true, internal: true });
     expect(email.send).toHaveBeenCalledTimes(2);
+    // El llamador debe poder distinguir "guardado en el CRM" de "solo notificado".
+    expect(result.crmPersisted).toBe(false);
+  });
+
+  it('reporta crmPersisted:false cuando el CRM falla aunque se envíen los correos', async () => {
+    const crm: ICrm = {
+      findLead: vi.fn(async () => null),
+      getLeadById: vi.fn(async () => null),
+      createLead: vi.fn(async () => {
+        throw new Error('CRM timeout');
+      }),
+      updateLead: vi.fn(async () => {
+        throw new Error('CRM timeout');
+      }),
+      appendLeadNote: vi.fn(async () => undefined),
+    };
+    const email: IEmailSender = { send: vi.fn(async () => ({ id: 'msg_1' })) };
+
+    const result = await new ProcessWebsiteContactUseCase(crm, email, 'ops@synckre.com').execute({
+      name: 'Ada Lovelace',
+      email: 'ada@company.com',
+      message: 'Hello',
+    });
+
+    expect(result.crmPersisted).toBe(false);
+    // El leadId es solo un marcador: no debe confundirse con un id real del CRM.
+    expect(result.leadId).toMatch(/^web-/);
   });
 });

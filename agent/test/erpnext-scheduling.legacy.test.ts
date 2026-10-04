@@ -1,3 +1,10 @@
+/**
+ * Adaptador legacy de agendamiento sobre ERPNext.
+ *
+ * Se conserva deliberadamente: mientras exista el flag `CRM_PROVIDER=erpnext`
+ * como vía de rollback, este adaptador sigue siendo código de producción y debe
+ * seguir cubierto. Si se retira el rollback, este archivo debe eliminarse.
+ */
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ErpNextSchedulingAdapter } from '../src/adapters/crm/erpnext-scheduling.adapter';
 import { DEFAULT_SCHEDULING_POLICY } from '../src/config/scheduling-policy';

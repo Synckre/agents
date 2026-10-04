@@ -33,7 +33,7 @@ export async function createSystem(): Promise<AgentSystem> {
 
   const pool = createPgPool(env.DATABASE_URL);
   const persistence = buildPersistence(pool);
-  const externalAdapters = buildExternalAdapters();
+  const externalAdapters = buildExternalAdapters(pool);
   const security = buildSecurityLayer(persistence.memory, pool);
   const llm = createLlmProvider();
 

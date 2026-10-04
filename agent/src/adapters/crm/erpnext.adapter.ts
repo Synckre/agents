@@ -175,23 +175,38 @@ export class ErpNextAdapter implements ICrm {
   }
 
   private async request(path: string, init: RequestInit = {}): Promise<Response> {
-    const url = `${this.config.baseUrl?.replace(/\/$/, '')}${path}`;
+    const baseUrl = this.config.baseUrl?.trim().replace(/\/+$/, '');
+    const apiKey = (this.config.apiKey ?? '').trim().replace(/^["']|["']$/g, '').replace(/\r?\n|\r/g, '');
+    const apiSecret = (this.config.apiSecret ?? '').trim().replace(/^["']|["']$/g, '').replace(/\r?\n|\r/g, '');
+    const url = `${baseUrl}${path}`;
     // Timeout preventivo de 10 segundos para evitar bloqueos por latencia de red
     const signal = init.signal ?? AbortSignal.timeout(10_000);
-    return fetch(url, {
+    const response = await fetch(url, {
       ...init,
       signal,
       headers: {
-        Authorization: `token ${this.config.apiKey}:${this.config.apiSecret}`,
+        Authorization: `token ${apiKey}:${apiSecret}`,
         'Content-Type': 'application/json',
         Accept: 'application/json',
         ...(init.headers ?? {}),
       },
     });
+
+    if (response.status === 401) {
+      console.error(
+        // Sin fragmentos del secreto en el log: sólo longitudes, que bastan para
+        // detectar un valor truncado o con comillas.
+        `[ErpNextAdapter] Authentication failed (401). Verifica que ERPNEXT_API_KEY y ERPNEXT_API_SECRET coincidan con las del usuario activo en ERPNext (Key: [len=${apiKey.length}], Secret: [len=${apiSecret.length}]).`,
+      );
+    }
+
+    return response;
   }
 
   private assertConfigured(): void {
-    if (!this.config.baseUrl || !this.config.apiKey || !this.config.apiSecret) {
+    const apiKey = (this.config.apiKey ?? '').trim().replace(/^["']|["']$/g, '');
+    const apiSecret = (this.config.apiSecret ?? '').trim().replace(/^["']|["']$/g, '');
+    if (!this.config.baseUrl || !apiKey || !apiSecret) {
       throw new Error('ERPNext is not configured (ERPNEXT_URL / ERPNEXT_API_KEY / ERPNEXT_API_SECRET)');
     }
   }

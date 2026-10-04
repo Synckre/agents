@@ -315,7 +315,9 @@ export class Conversation implements IConversation {
       (item): item is IBookedAppointment =>
         Boolean(item) &&
         typeof item === 'object' &&
-        typeof (item as IBookedAppointment).id === 'string',
+        typeof (item as IBookedAppointment).id === 'string' &&
+        ((item as IBookedAppointment).crmAppointmentId === undefined ||
+          typeof (item as IBookedAppointment).crmAppointmentId === 'string'),
     );
   }
 

@@ -17,13 +17,15 @@ export interface ICreateAppointmentRecord {
   readonly email?: string;
   readonly phone?: string;
   readonly appointmentType?: string;
+  /** Duración efectiva en minutos; si falta, el adaptador aplica su valor por defecto. */
+  readonly durationMinutes?: number;
   readonly leadId?: string;
   readonly calendarEventId?: string;
   readonly notes?: string;
 }
 
 /**
- * Puerto para persistir y consultar citas en el CRM / sistema de registro (ERPNext DocType Appointment).
+ * Puerto para persistir y consultar citas en el CRM / sistema de registro.
  */
 export interface IAppointmentRepository {
   findAppointments(from: Date | string, to: Date | string): Promise<IBookedAppointmentRecord[]>;

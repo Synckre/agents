@@ -8,6 +8,25 @@ import { ICalendar } from '@core/ports/calendar.port';
 import { IEmailSender } from '@core/ports/email-sender.port';
 import { RESEND_TEMPLATES } from '@adapters/email/resend-templates.config';
 
+/**
+ * Fechas relativas al momento de ejecución.
+ *
+ * Los tests originales fijaban fechas de septiembre de 2026; al quedar en el
+ * pasado, `resolveAppointmentRange` desplazaba la cita al año siguiente y el
+ * recordatorio automático (24h antes) caía también en el pasado, activando el
+ * fallback "5 minutos desde ahora". Eso hacía el test dependiente del calendario.
+ */
+function futureIso(daysAhead: number, hourUtc = 16): string {
+  const d = new Date(Date.now() + daysAhead * 24 * 60 * 60 * 1000);
+  d.setUTCHours(hourUtc, 0, 0, 0);
+  return d.toISOString();
+}
+
+/** El recordatorio se programa 24h antes del inicio de la cita. */
+function reminderDueFor(startIso: string): string {
+  return new Date(new Date(startIso).getTime() - 24 * 60 * 60 * 1000).toISOString();
+}
+
 describe('Reschedule and Cancel Appointment automatic emails with ICS', () => {
   it('reschedule_appointment envía correo automático de reagendamiento con .ics actualizado', async () => {
     const memory = new InMemoryStore();
@@ -201,6 +220,9 @@ describe('Reschedule and Cancel Appointment automatic emails with ICS', () => {
   });
 
   it('reschedule_appointment cancela el recordatorio anterior y programa el nuevo en el scheduler', async () => {
+    // 12 días en el futuro: garantiza que el recordatorio (24h antes) siga en el futuro.
+    const NEW_START = futureIso(12, 16);
+    const NEW_END = futureIso(12, 17);
     const memory = new InMemoryStore();
     const conv = new Conversation({
       id: 'conv-reschedule-reminder',
@@ -209,8 +231,8 @@ describe('Reschedule and Cancel Appointment automatic emails with ICS', () => {
         bookedAppointments: [
           {
             id: 'appt-888',
-            start: '2026-09-12T14:00:00.000Z',
-            end: '2026-09-12T15:00:00.000Z',
+            start: futureIso(5, 14),
+            end: futureIso(5, 15),
             title: 'Sesión Consultoría',
             attendeeName: 'Laura Dev',
             attendeeEmail: 'laura@test.com',
@@ -225,8 +247,8 @@ describe('Reschedule and Cancel Appointment automatic emails with ICS', () => {
       createAppointment: vi.fn(),
       rescheduleAppointment: vi.fn().mockResolvedValue({
         id: 'appt-888',
-        start: '2026-09-20T16:00:00.000Z',
-        end: '2026-09-20T17:00:00.000Z',
+        start: NEW_START,
+        end: NEW_END,
         title: 'Sesión Consultoría',
       }),
       cancelAppointment: vi.fn(),
@@ -259,8 +281,8 @@ describe('Reschedule and Cancel Appointment automatic emails with ICS', () => {
     );
 
     const result = (await tool.execute({
-      start: '2026-09-20T16:00:00.000Z',
-      end: '2026-09-20T17:00:00.000Z',
+      start: NEW_START,
+      end: NEW_END,
     })) as { ok: boolean };
 
     expect(result.ok).toBe(true);
@@ -270,7 +292,7 @@ describe('Reschedule and Cancel Appointment automatic emails with ICS', () => {
         leadId: 'LEAD-888',
         conversationId: 'conv-reschedule-reminder',
         appointmentId: 'appt-888',
-        dueAt: new Date('2026-09-19T16:00:00.000Z'), // 24h antes del 20 de septiembre a las 16:00
+        dueAt: new Date(reminderDueFor(NEW_START)), // 24h antes del inicio de la cita
         type: 'reminder',
         action: 'send_template_email',
         templateId: RESEND_TEMPLATES.REMINDER_ES,

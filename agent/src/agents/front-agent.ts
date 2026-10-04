@@ -4,6 +4,13 @@ import { IMessage } from '@core/domain/message.value-object';
 import { interpolateConfirmedValues } from '@core/domain/interpolate-confirmed-values';
 import { ITool } from '@core/ports/tool.port';
 import { IToolCallingLlm, IToolDefinition } from '@core/ports/tool-calling-llm.port';
+import {
+  buildScopeRefusal,
+  classifyMessageScope,
+  detectLocale,
+} from '@core/domain/conversation-scope';
+import { renderSchedulingPolicyContext } from '@core/domain/scheduling-policy-description';
+import { ISchedulingPolicyProvider } from '@core/ports/scheduling-policy.port';
 import { FRONT_AGENT_SYSTEM_PROMPT } from './front-agent.prompt';
 
 export interface IFrontAgentToolScope {
@@ -16,6 +23,19 @@ export type FrontAgentToolsFactory = (scope: IFrontAgentToolScope) => ITool[];
 export interface FrontAgentOptions {
   readonly maxIterations?: number;
   readonly timeZone?: string;
+  /**
+   * Rechaza de forma determinista las peticiones ajenas al negocio sin llegar a
+   * llamar al modelo. Por defecto activado; desactivarlo deja el control de
+   * alcance únicamente en manos del system prompt.
+   */
+  readonly enforceScope?: boolean;
+  /**
+   * Fuente de la política de agendamiento. Si se indica, los datos vigentes
+   * (horario, duraciones, festivos) se inyectan en el system prompt en cada
+   * turno, de modo que el modelo los tenga SIEMPRE como contexto y no dependa
+   * de que la búsqueda en la base de conocimiento recupere el fragmento del FAQ.
+   */
+  readonly policyProvider?: ISchedulingPolicyProvider;
 }
 
 function formatTurnContent(message: IMessage, timeZone: string): string {
@@ -56,6 +76,31 @@ export class FrontAgent extends BaseAgent {
   }
 
   async invoke(state: IAgentState): Promise<Partial<IAgentState>> {
+    // Control de alcance determinista: si la última intervención del usuario no
+    // trata sobre la empresa, se responde con un rechazo breve y no se llama al
+    // modelo ni a ninguna herramienta.
+    if (this.options.enforceScope !== false) {
+      const lastUserMessage = [...state.messages].reverse().find((m) => m.role === 'user');
+      const decision = classifyMessageScope(lastUserMessage?.content ?? '');
+      if (decision.scope === 'out_of_scope') {
+        const locale = detectLocale(lastUserMessage?.content ?? '');
+        return {
+          currentAgent: this.name,
+          nextAgent: undefined,
+          messages: [
+            {
+              role: 'assistant',
+              content: buildScopeRefusal(locale),
+              name: this.name,
+              timestamp: new Date(),
+              metadata: { scopeGuard: 'out_of_scope', signal: decision.signal ?? 'unknown' },
+            },
+          ],
+          metadata: state.metadata,
+        };
+      }
+    }
+
     let current: IAgentState = state;
     const tools = this.createTools({
       conversationId: state.id,
@@ -70,10 +115,25 @@ export class FrontAgent extends BaseAgent {
 
     const produced: IMessage[] = [];
     const timeZone = this.options.timeZone ?? 'UTC';
+
+    // La política vigente se añade al prompt para que el modelo no tenga que
+    // adivinarla ni depender de la recuperación del FAQ. Si falla su lectura, el
+    // turno continúa: la ausencia de contexto no debe tumbar la conversación.
+    let systemContent = FRONT_AGENT_SYSTEM_PROMPT;
+    if (this.options.policyProvider) {
+      try {
+        const policy = await this.options.policyProvider.getPolicy();
+        systemContent = `${FRONT_AGENT_SYSTEM_PROMPT}\n\n${renderSchedulingPolicyContext(policy)}`;
+      } catch {
+        // Sin bloque de política: el prompt base ya indica que la disponibilidad
+        // sólo puede salir de check_availability.
+      }
+    }
+
     const transcript: IMessage[] = [
       {
         role: 'system',
-        content: FRONT_AGENT_SYSTEM_PROMPT,
+        content: systemContent,
         name: this.name,
       },
       ...state.messages.map((msg) => ({
