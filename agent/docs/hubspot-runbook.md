@@ -150,6 +150,30 @@ no en variables de entorno, para poder administrarse desde un panel.
 | `scheduling_appointment_types` | Un tipo por fila: nombre, duración, concurrencia, activo | Lista CRUD |
 | `scheduling_holidays` | Una fila por festivo | Calendario |
 
+### Cómo se configuran los valores de semilla (y por qué NO en JSON)
+
+```bash
+# Formato recomendado: sin comillas, llaves ni comas anidadas.
+SCHEDULING_BUSINESS_HOURS=mon=09:00-18:00,tue=09:00-18:00,sat=closed,sun=closed
+SCHEDULING_APPOINTMENT_TYPES=general=30:Reunión General,consultation=45:Consultoría Técnica
+```
+
+Se acepta JSON por compatibilidad, pero **no se recomienda**: los paneles de
+despliegue (Coolify, Docker Compose, Kubernetes, `systemd`) suelen perder las comillas
+dobles al pegar el valor, y entonces el JSON deja de ser válido.
+
+> [!WARNING]
+> **Caso real que tumbó producción.** Con los valores en JSON, Coolify entregó el valor
+> sin las comillas internas (`{mon:{open:09:00,close:18:00}}`). El esquema lo rechazaba
+> y el contenedor entraba en **crash-loop**, sin chat ni formulario. Desde entonces:
+>
+> - El valor mal formado **no interrumpe el arranque**: se registra un aviso claro y se
+>   continúa con la política de la base de datos (que es la fuente de verdad).
+> - Se documenta y se prefiere el formato compacto, que sobrevive a cualquier panel.
+>
+> Regla general: solo interrumpen el arranque las variables **esenciales** (credenciales
+> del CRM). Las que son semilla o respaldo se degradan con aviso.
+
 ### Reglas de autoridad
 
 - **Si existe la fila de `scheduling_settings`, manda la base de datos.**

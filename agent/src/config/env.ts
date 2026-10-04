@@ -1,71 +1,21 @@
 import dotenv from 'dotenv';
 import { z } from 'zod';
+import { parseAppointmentTypes, parseBusinessHours } from './scheduling-env';
 
 dotenv.config();
 
 /**
- * Parsea una variable de entorno con forma JSON y la valida contra un esquema.
- * Se usa para la política de agendamiento configurable (horarios y tipos de cita).
- */
-function jsonEnv<T>(schema: z.ZodType<T>, label: string) {
-  return z
-    .string()
-    .optional()
-    .transform((raw, ctx): T | undefined => {
-      const value = raw?.trim();
-      if (!value) return undefined;
-      let parsed: unknown;
-      try {
-        parsed = JSON.parse(value);
-      } catch {
-        ctx.addIssue({ code: 'custom', message: `${label} must be valid JSON` });
-        return z.NEVER;
-      }
-      const result = schema.safeParse(parsed);
-      if (!result.success) {
-        ctx.addIssue({
-          code: 'custom',
-          message: `${label} is invalid: ${result.error.issues.map((i) => i.message).join('; ')}`,
-        });
-        return z.NEVER;
-      }
-      return result.data;
-    });
-}
-
-// Se admite un dígito en la hora ("8:00"): el proveedor de política lo
-// normaliza a "08:00", así que rechazarlo en el arranque sería incoherente.
-const weekdayHours = z.object({
-  open: z.string().regex(/^\d{1,2}:\d{2}$/, 'expected H:MM or HH:MM'),
-  close: z.string().regex(/^\d{1,2}:\d{2}$/, 'expected H:MM or HH:MM'),
-});
-
-// Todos los días son opcionales: los que no se indiquen conservan el horario
-// por defecto, de modo que una configuración parcial es válida.
-const businessHoursSchema = z.object({
-  mon: weekdayHours.nullable().optional(),
-  tue: weekdayHours.nullable().optional(),
-  wed: weekdayHours.nullable().optional(),
-  thu: weekdayHours.nullable().optional(),
-  fri: weekdayHours.nullable().optional(),
-  sat: weekdayHours.nullable().optional(),
-  sun: weekdayHours.nullable().optional(),
-});
-
-const appointmentTypesSchema = z.record(
-  z.object({
-    name: z.string().optional(),
-    durationMinutes: z.number().int().positive(),
-    maxConcurrent: z.number().int().positive().default(1),
-  }),
-);
-
-/**
  * Esquema de validación y objeto tipado para las variables de entorno del sistema.
  *
- * Deliberadamente pequeño en lo que respecta a HubSpot: los valores que ya están
- * verificados contra el portal viven como constantes en `@config/hubspot.config`,
- * para que no puedan quedar desincronizados por una variable mal puesta.
+ * Deliberadamente pequeño en lo que respecta a HubSpot y a la agenda: los valores
+ * ya verificados contra el portal viven como constantes en `@config/hubspot.config`
+ * y la política de agendamiento en la base de datos. Lo que queda aquí es lo que de
+ * verdad hay que configurar por entorno.
+ *
+ * Criterio de fallo: solo interrumpen el arranque las variables **esenciales**
+ * (credenciales del CRM, de las que depende todo). Las que son semilla o respaldo
+ * se avisan y se degradan, porque tumbar el servicio por ellas deja a la empresa
+ * sin chat ni formulario.
  */
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
@@ -110,12 +60,29 @@ const envSchema = z.object({
   ERPNEXT_API_SECRET: z.string().optional(),
 
   // ---------------------------------------------------------------------------
-  // Política de agendamiento. Es la configuración de NEGOCIO: horarios, tipos de
-  // cita y festivos. Si se omite, se aplican los valores por defecto del código.
+  // Política de agendamiento: SEMILLA y RESPALDO, no la fuente de verdad.
+  // La fuente de verdad son las tablas `scheduling_*` de la base de datos.
   // ---------------------------------------------------------------------------
   SCHEDULING_TIMEZONE: z.string().default('America/New_York'),
-  SCHEDULING_BUSINESS_HOURS: jsonEnv(businessHoursSchema, 'SCHEDULING_BUSINESS_HOURS'),
-  SCHEDULING_APPOINTMENT_TYPES: jsonEnv(appointmentTypesSchema, 'SCHEDULING_APPOINTMENT_TYPES'),
+  /**
+   * Formato compacto (recomendado, sobrevive a cualquier panel de despliegue):
+   *   mon=09:00-18:00,tue=09:00-18:00,sat=closed
+   * También se acepta JSON, por compatibilidad.
+   * Un valor mal formado NO interrumpe el arranque.
+   */
+  SCHEDULING_BUSINESS_HOURS: z
+    .string()
+    .optional()
+    .transform((raw) => parseBusinessHours(raw)),
+  /**
+   * Formato compacto (recomendado):
+   *   general=30,demo=30:Demostración,consultation=45:Consultoría
+   * También se acepta JSON, por compatibilidad.
+   */
+  SCHEDULING_APPOINTMENT_TYPES: z
+    .string()
+    .optional()
+    .transform((raw) => parseAppointmentTypes(raw)),
   SCHEDULING_HOLIDAYS: z
     .string()
     .optional()
